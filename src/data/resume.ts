@@ -116,8 +116,6 @@ export interface Project {
   category: 'genai' | 'ml-cv' | 'oss'
   stack: string[]
   bullets: string[]
-  /** generated retro artwork, served from /projects/<id>.jpg */
-  art: string
   links?: { label: string; url: string }[]
 }
 
@@ -143,7 +141,6 @@ export const projects: Project[] = [
       "Architected and led the bank's first production Python AI platform: document classification/extraction microservices for 800+ users pan-India at 97% accuracy, cutting manual processing time 90%.",
       'Built a pluggable LLM interface (Vertex AI + LiteLLM) eliminating vendor lock-in, pairing Gemini with LayoutLM/BERT extraction, confidence scoring, a prompt hub, and an 11-API feedback loop (98%+ test coverage); led 4 engineers and set up CI/CD.',
     ],
-    art: asset('/projects/ai-fabric.jpg'),
   },
   {
     id: 'cheque-ai',
@@ -164,7 +161,6 @@ export const projects: Project[] = [
     bullets: [
       'Solely owned an AI cheque engine pairing Gemini with LayoutLM/Donut, hitting 99%+ accuracy at 10+ cheques/sec; built a validation harness over 700K+ ICR reject records, projected to halve operations time.',
     ],
-    art: asset('/projects/cheque-ai.jpg'),
   },
   {
     id: 'verifyx',
@@ -177,7 +173,6 @@ export const projects: Project[] = [
       'Built an extensible audit framework (VKYC + ECCS cheque-data audit) with a CAG chat agent over RAG spanning 27,000+ documents, reused across retail and credit from one modular codebase.',
       'Optimized chunking and token strategy to cut LLM cost; demoed live to the CEO and Board of Directors.',
     ],
-    art: asset('/projects/verifyx.jpg'),
   },
   {
     id: 'narad-ai',
@@ -196,7 +191,6 @@ export const projects: Project[] = [
     bullets: [
       'Single-handedly built the Narad AI email-agent frontend on a reusable MFE architecture (98%+ test coverage) and the VERA voice-to-voice interface with real-time ThreeJS 3D visualizations.',
     ],
-    art: asset('/projects/narad-ai.jpg'),
   },
   {
     id: 'ai-banking',
@@ -217,7 +211,6 @@ export const projects: Project[] = [
       'Co-designed and drove a LangGraph-based, skills-oriented agentic platform composing banking workflows from modular skills, integrating session management, MFA authentication, and downstream banking entities behind a unified orchestration layer.',
       "Delivered the customizable Aqua AI micro-frontend chat surface and enforced strict modularity and code-quality standards across the platform's repositories.",
     ],
-    art: asset('/projects/ai-banking.jpg'),
   },
   {
     id: 'rag-service',
@@ -236,7 +229,6 @@ export const projects: Project[] = [
     bullets: [
       'Pioneered a hybrid FAISS + BM25 retrieval service with sentence-transformer embeddings and a Cohere/BGE reranker, reducing LLM hallucinations by 40-60% across 5 projects.',
     ],
-    art: asset('/projects/rag-service.jpg'),
   },
   {
     id: 'signature-verify',
@@ -254,7 +246,6 @@ export const projects: Project[] = [
     bullets: [
       'Designed an end-to-end pipeline: custom YOLOv8 for signature extraction, Pix2Pix GAN for image denoising/cleaning, and embedding-based similarity with bicubic interpolation for precise verification.',
     ],
-    art: asset('/projects/signature-verify.jpg'),
   },
   {
     id: 'pay-by-face',
@@ -274,7 +265,6 @@ export const projects: Project[] = [
       'Benchmarked 7 face-embedding models (ArcFace, FaceNet variants on InsightFace) and shipped sub-100ms recognition at 99.2% accuracy under production load, served from a FAISS/Milvus vector store.',
       'Built a custom anti-spoofing CNN using liveness, depth maps, and texture analysis, achieving a false acceptance rate below 0.1%; recognized with the Silver Star Award.',
     ],
-    art: asset('/projects/pay-by-face.jpg'),
   },
   {
     id: 'pay-by-voice',
@@ -292,7 +282,6 @@ export const projects: Project[] = [
     bullets: [
       'Fine-tuned Indic Parler-TTS and Wav2Vec2/Whisper STT and built ECAPA-TDNN speaker verification reaching 97% accuracy, plus anti-spoofing voice forensics for a multimodal Pay-by-Voice system.',
     ],
-    art: asset('/projects/pay-by-voice.jpg'),
   },
   {
     id: 'ankan',
@@ -304,7 +293,6 @@ export const projects: Project[] = [
     bullets: [
       'Built from scratch an annotation tool with active-learning loops and quality gates; 100+ users have labelled 10,000+ images, now the standard for bank-wide ML training data.',
     ],
-    art: asset('/projects/ankan.jpg'),
   },
   {
     id: 'pareekshana',
@@ -316,7 +304,6 @@ export const projects: Project[] = [
     bullets: [
       'Redesigned the enterprise QA suite (User Experience overhaul, Micro Frontend, RAG-based CAG) and laid the groundwork for AI OS; led up to 10 engineers and presented strategy to the board. Built a YOLO-based merchant-verification POC and an LLM-powered merchant-onboarding compliance solution.',
     ],
-    art: asset('/projects/pareekshana.jpg'),
   },
   {
     id: 'soweak',
@@ -338,7 +325,6 @@ export const projects: Project[] = [
       'Published an OWASP-aligned security middleware that defends every boundary of an LLM pipeline (input, retrieval, tool calls, output, streaming) with block/redact/transform/approval decisions and full audit trails; shipped both a Python (PyPI) library and an isomorphic TypeScript (npm) port for Node, browsers, and edge runtimes.',
       'Trained custom NER and NLP ML classifiers (RoBERTa/DeBERTa fine-tunes) for prompt-injection, jailbreak, PII/DLP, and toxicity detection, with LangChain, OpenAI, and Gemini adapters plus a red-team CLI.',
     ],
-    art: asset('/projects/soweak.jpg'),
     links: [
       { label: 'GitHub', url: 'https://github.com/SoubhikGhosh/soweak' },
     ],
@@ -364,7 +350,6 @@ export const projects: Project[] = [
       'Built a multi-tenant platform that compiles plain-language tasks into a typed DAG of registry-defined capabilities via an LLM planner, then executes it on a generic runtime interpreter with a credential vault and per-task audit.',
       'Engineered a remote-execution spine dispatching capability nodes over outbound WebSockets to lightweight cross-OS agents (shell, system, desktop-GUI), letting one authored workflow run on the server or any enrolled workstation.',
     ],
-    art: asset('/projects/aakaar.jpg'),
     links: [
       { label: 'GitHub', url: 'https://github.com/SoubhikGhosh/aakaar' },
     ],
