@@ -1,0 +1,116 @@
+/* =====================================================================
+   Terminal — phosphor green on terminal black. Colors/fonts strictly
+   from tokens.css; the well bevel sinks the screen into the chassis.
+   ===================================================================== */
+
+.term-root {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--term-bg);
+  box-shadow: var(--bevel-well);
+  cursor: text;
+}
+
+.term-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 10px 10px;
+  font-family: var(--font-term);
+  font-size: 18px;
+  line-height: 1.15;
+  color: var(--term-green);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--term-green) 35%, transparent);
+}
+
+.term-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 1.15em;
+}
+
+/* ---------- span inks ---------- */
+.tc-amber {
+  color: var(--term-amber);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--term-amber) 35%, transparent);
+}
+.tc-red {
+  color: var(--led-red);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--led-red) 35%, transparent);
+}
+.tc-dim {
+  opacity: 0.55;
+}
+
+/* ---------- neofetch palette swatches ---------- */
+.tc-sw {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.72em;
+  margin: 0 1px;
+  transform: translateY(0.08em);
+  text-shadow: none;
+}
+.sw-ink { background: var(--ink); }
+.sw-red { background: var(--led-red); }
+.sw-green { background: var(--term-green); }
+.sw-amber { background: var(--term-amber); }
+.sw-blue { background: var(--title-a); }
+.sw-teal { background: var(--desktop); }
+.sw-face { background: var(--face); }
+.sw-paper { background: var(--paper); }
+
+/* ---------- blinking block cursor ---------- */
+.term-cursor {
+  display: inline-block;
+  min-width: 0.55em;
+  background: var(--term-green);
+  color: var(--term-bg);
+  text-shadow: none;
+  animation: term-blink 1.06s steps(1, end) infinite;
+}
+.term-cursor.idle {
+  animation: none;
+  background: transparent;
+  color: var(--term-green);
+  box-shadow: inset 0 0 0 1px var(--term-green);
+}
+@keyframes term-blink {
+  0%, 55% {
+    background: var(--term-green);
+    color: var(--term-bg);
+  }
+  56%, 100% {
+    background: transparent;
+    color: var(--term-green);
+  }
+}
+
+/* ---------- the real (hidden) input carrying keystrokes ---------- */
+.term-input {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  height: 2px;
+  opacity: 0;
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: transparent;
+  pointer-events: none;
+}
+
+/* ---------- matrix overlay ---------- */
+.term-matrix {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  image-rendering: auto;
+}

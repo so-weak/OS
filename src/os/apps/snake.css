@@ -1,0 +1,113 @@
+/* =====================================================================
+   NIBBLES — chassis-beige cabinet around a phosphor playfield.
+   Colors/fonts strictly from tokens.css.
+   ===================================================================== */
+
+.snake-root {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px;
+  background: var(--face);
+  outline: none;
+  overflow: hidden;
+}
+
+/* ---------- LED score strip ---------- */
+.snake-hud {
+  width: 416px;
+  max-width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 2px 10px 3px;
+  background: var(--term-bg);
+  box-shadow: var(--bevel-thin-in);
+  font-family: var(--font-term);
+  font-size: 17px;
+  line-height: 1.1;
+}
+.snake-score {
+  color: var(--term-green);
+  text-shadow: 0 0 5px color-mix(in srgb, var(--term-green) 40%, transparent);
+}
+.snake-hi {
+  color: var(--term-amber);
+  text-shadow: 0 0 5px color-mix(in srgb, var(--term-amber) 40%, transparent);
+}
+.snake-title {
+  color: var(--face-dark);
+  letter-spacing: 2px;
+}
+
+/* ---------- playfield ---------- */
+.snake-bezel {
+  position: relative;
+  padding: 8px;
+  background: var(--term-bg);
+  box-shadow: var(--bevel-well);
+}
+.snake-canvas {
+  display: block;
+  image-rendering: pixelated;
+}
+
+/* ---------- overlays (title / pause / game over) ---------- */
+.snake-overlay {
+  position: absolute;
+  inset: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  text-align: center;
+  background: color-mix(in srgb, var(--term-bg) 82%, transparent);
+  font-family: var(--font-term);
+  color: var(--term-green);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--term-green) 35%, transparent);
+}
+.snake-big {
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: 3px;
+}
+.snake-sub {
+  font-size: 19px;
+  opacity: 0.85;
+}
+.snake-newhi {
+  font-size: 19px;
+  color: var(--term-amber);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--term-amber) 40%, transparent);
+}
+.snake-cred {
+  font-size: 17px;
+  line-height: 1.25;
+  color: var(--term-amber);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--term-amber) 40%, transparent);
+  padding: 3px 10px;
+  box-shadow: inset 0 0 0 1px var(--amber-deep);
+}
+.snake-blink {
+  font-size: 19px;
+  margin-top: 4px;
+  animation: snake-blink 1.1s steps(1, end) infinite;
+}
+.snake-keys {
+  color: var(--term-green);
+  opacity: 0.6;
+}
+@keyframes snake-blink {
+  0%, 55% { opacity: 1; }
+  56%, 100% { opacity: 0; }
+}
+
+/* ---------- footer hint ---------- */
+.snake-help {
+  color: var(--ink-soft);
+}

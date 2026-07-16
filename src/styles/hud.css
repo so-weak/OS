@@ -1,0 +1,90 @@
+/* HUD overlays that live OUTSIDE the OS (over the 3D canvas). */
+
+.hud-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 36px;
+  transform: translateX(-50%);
+  color: #cfe8df;
+  font-family: var(--font-term);
+  font-size: 22px;
+  letter-spacing: 1px;
+  text-shadow: 0 0 12px rgba(72, 218, 182, 0.55);
+  animation: hint-pulse 2.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes hint-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.hud-back {
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  z-index: 50;
+  font-family: var(--font-term);
+  font-size: 18px;
+  color: #cfe8df;
+  background: rgba(10, 16, 14, 0.72);
+  border: 1px solid rgba(72, 218, 182, 0.4);
+  padding: 6px 14px;
+  cursor: pointer;
+  text-shadow: 0 0 8px rgba(72, 218, 182, 0.4);
+}
+.hud-back:hover {
+  background: rgba(18, 30, 26, 0.85);
+  border-color: rgba(72, 218, 182, 0.8);
+}
+.hud-key {
+  font-size: 13px;
+  border: 1px solid rgba(207, 232, 223, 0.5);
+  padding: 0 5px;
+}
+
+.loader-veil {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #060708;
+  color: #cfe8df;
+  z-index: 100;
+}
+.loader-box {
+  font-size: 22px;
+  letter-spacing: 1px;
+  display: grid;
+  gap: 14px;
+  text-align: left;
+}
+.loader-bar {
+  width: 340px;
+  height: 16px;
+  border: 1px solid #cfe8df;
+  padding: 2px;
+}
+.loader-fill {
+  height: 100%;
+  width: 30%;
+  background: repeating-linear-gradient(
+    90deg,
+    #48dab6 0 8px,
+    transparent 8px 12px
+  );
+  animation: loader-march 1.1s linear infinite;
+}
+@keyframes loader-march {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(24px);
+  }
+}

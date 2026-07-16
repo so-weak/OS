@@ -1,0 +1,116 @@
+/* =====================================================================
+   CRT overlay — pointer-events-none stack above the whole OS.
+   Deliberately faint: at 1024x768 with 13-14px UI text every layer is
+   tuned to add texture without hurting legibility. Colors via tokens
+   only (mixed to low alpha with color-mix).
+   ===================================================================== */
+
+.crt-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9000;
+  overflow: hidden;
+}
+.crt-overlay > div {
+  position: absolute;
+  inset: 0;
+}
+
+/* knob-driven tube brightness/contrast (backdrop-filter set inline).
+   Only mounted when the knobs leave neutral, so the common path pays
+   nothing for it. */
+.crt-adjust {
+  will-change: backdrop-filter;
+}
+
+/* horizontal scanlines: 1px shade every 3px */
+.crt-scanlines {
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 2px,
+    color-mix(in srgb, var(--term-bg) 26%, transparent) 2px,
+    color-mix(in srgb, var(--term-bg) 26%, transparent) 3px
+  );
+}
+
+/* very subtle vertical RGB phosphor mask */
+.crt-mask {
+  background: repeating-linear-gradient(
+    to right,
+    color-mix(in srgb, var(--led-red) 4%, transparent) 0px,
+    color-mix(in srgb, var(--led-red) 4%, transparent) 1px,
+    color-mix(in srgb, var(--led-green) 4%, transparent) 1px,
+    color-mix(in srgb, var(--led-green) 4%, transparent) 2px,
+    color-mix(in srgb, var(--title-b) 5%, transparent) 2px,
+    color-mix(in srgb, var(--title-b) 5%, transparent) 3px
+  );
+}
+
+/* slow, near-imperceptible brightness flicker */
+.crt-flicker {
+  background: var(--face-lighter);
+  opacity: 0.018;
+  animation: crt-flicker 2.8s linear infinite;
+}
+@keyframes crt-flicker {
+  0%,
+  100% {
+    opacity: 0.018;
+  }
+  12% {
+    opacity: 0.026;
+  }
+  23% {
+    opacity: 0.012;
+  }
+  38% {
+    opacity: 0.03;
+  }
+  51% {
+    opacity: 0.016;
+  }
+  67% {
+    opacity: 0.028;
+  }
+  84% {
+    opacity: 0.014;
+  }
+}
+
+/* a soft band of light drifting down the tube every few seconds */
+.crt-overlay > .crt-roll {
+  inset: auto;
+  left: 0;
+  right: 0;
+  top: -160px;
+  height: 160px;
+  opacity: 0.045;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in srgb, var(--face-lighter) 55%, transparent),
+    transparent
+  );
+  animation: crt-roll 8s linear infinite;
+}
+@keyframes crt-roll {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(928px);
+  }
+}
+
+/* corner falloff + faint phosphor glow hugging the glass edge */
+.crt-vignette {
+  background: radial-gradient(
+    ellipse 75% 70% at 50% 50%,
+    transparent 58%,
+    color-mix(in srgb, var(--term-bg) 38%, transparent) 88%,
+    color-mix(in srgb, var(--term-bg) 68%, transparent) 100%
+  );
+  box-shadow: inset 0 0 58px color-mix(in srgb, var(--term-green) 9%, transparent);
+}

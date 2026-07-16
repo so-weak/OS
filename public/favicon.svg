@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
+  <!-- SoubhikOS pixel CRT -->
+  <rect x="1" y="1" width="14" height="11" fill="#cdc8bc"/>
+  <rect x="2" y="2" width="12" height="9" fill="#0c4f4a"/>
+  <rect x="3" y="3" width="10" height="7" fill="#16766e"/>
+  <rect x="4" y="4" width="6" height="1" fill="#33ff66"/>
+  <rect x="4" y="6" width="8" height="1" fill="#33ff66"/>
+  <rect x="4" y="8" width="3" height="1" fill="#f0a72b"/>
+  <rect x="6" y="12" width="4" height="1" fill="#8a857a"/>
+  <rect x="4" y="13" width="8" height="2" fill="#cdc8bc"/>
+  <rect x="13" y="13" width="2" height="1" fill="#46d160"/>
+</svg>
