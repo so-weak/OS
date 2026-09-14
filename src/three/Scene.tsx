@@ -13,7 +13,8 @@ import Monitor from './Monitor'
 import Papers from './Papers'
 import Room from './Room'
 import LibraryHud from './LibraryHud'
-import RoomTooltip, { HireToast } from './Tooltip'
+import Scenery from './Scenery'
+import RoomTooltip from './Tooltip'
 import Tower from './Tower'
 import TrashGame from './TrashGame'
 import RoomWindow from './Window'
@@ -22,7 +23,7 @@ import { INTRO_CAM_POS, P } from './layout'
 
 /* =====================================================================
    Scene root — the full-viewport R3F canvas plus the DOM overlays that
-   live beside it (hover tooltip, "hire" toast).
+   live beside it (hover tooltip, library HUD).
 
    Because the OS uses <Html occlude="blending">, drei sets the canvas
    element to pointer-events:none (the DOM screen lives *behind* the
@@ -81,9 +82,10 @@ export default function Scene() {
         <Bookcase />
         <TrashGame />
         <DustMotes />
+        {/* the living-world props: wall clock, moth, weather runner */}
+        <Scenery />
       </Canvas>
       <RoomTooltip />
-      <HireToast />
       <LibraryHud />
     </>
   )

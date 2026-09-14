@@ -16,8 +16,14 @@ interface SystemState {
   power: PowerState
   view: ViewState
   muted: boolean
+  /** typing "hire" on the room keyboard booted the machine: the desktop
+      opens Contact instead of Welcome, then clears this */
+  hireBoot: boolean
   /** user clicked the monitor (or "power on") */
   powerOn: () => void
+  /** the "hire" path: power on and ask the desktop to open Contact */
+  powerOnForHire: () => void
+  clearHireBoot: () => void
   bootComplete: () => void
   /** start menu -> Shut Down. Plays CRT-off, then zooms out. */
   shutDown: () => void
@@ -32,11 +38,21 @@ export const useSystem = create<SystemState>((set, get) => ({
   power: 'off',
   view: 'room',
   muted: useWorld.getState().muted,
+  hireBoot: false,
 
   powerOn: () => {
     const { power } = get()
     set({ view: 'zooming-in', power: power === 'off' ? 'booting' : power })
   },
+  powerOnForHire: () => {
+    const { power } = get()
+    set({
+      view: 'zooming-in',
+      power: power === 'off' ? 'booting' : power,
+      hireBoot: true,
+    })
+  },
+  clearHireBoot: () => set({ hireBoot: false }),
   bootComplete: () => set({ power: 'desktop' }),
   shutDown: () => set({ power: 'shutting-down' }),
   shutdownComplete: () => {
