@@ -88,3 +88,56 @@
     transform: translateX(24px);
   }
 }
+
+/* ---------- the stacks (3D library) ----------
+   Portalled to <body>, so it sits above #root's stacking context. */
+.lib-hud {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+}
+.lib-back,
+.lib-open {
+  position: fixed;
+  font-family: var(--font-term);
+  color: #f0dfb8;
+  background: rgba(24, 16, 8, 0.78);
+  border: 1px solid rgba(201, 162, 39, 0.55);
+  cursor: pointer;
+  pointer-events: auto;
+  text-shadow: 0 0 8px rgba(201, 162, 39, 0.35);
+}
+.lib-back {
+  top: 18px;
+  left: 18px;
+  font-size: 18px;
+  padding: 6px 14px;
+}
+.lib-open {
+  top: 18px;
+  right: 18px;
+  font-size: 18px;
+  letter-spacing: 1px;
+  padding: 8px 20px;
+  background: rgba(201, 162, 39, 0.92);
+  color: #1c1408;
+  border-color: rgba(255, 235, 170, 0.7);
+  text-shadow: none;
+  box-shadow: 0 0 24px rgba(201, 162, 39, 0.25);
+}
+.lib-count {
+  font-family: var(--font-label);
+  font-size: 8px;
+  letter-spacing: 1px;
+  vertical-align: 2px;
+  -webkit-font-smoothing: none;
+}
+.lib-back:hover {
+  background: rgba(40, 28, 12, 0.9);
+  border-color: rgba(224, 193, 106, 0.9);
+}
+.lib-open:hover {
+  background: rgb(224, 193, 106);
+  border-color: #fff6e0;
+}

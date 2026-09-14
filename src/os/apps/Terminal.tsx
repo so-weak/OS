@@ -6,10 +6,12 @@ import type {
 } from 'react'
 import type { AppProps } from '../registry'
 import { apps } from '../registry'
-import { useWindows } from '../store'
+import { useSystem, useWindows } from '../store'
 import { useEggs } from '../eggs'
+import { useLibrary } from '../../three/libraryState'
 import { playBeep } from '../sound'
 import { SCREEN_W, SCREEN_H } from '../../constants'
+import { books } from '../../data/library'
 import {
   identity,
   summary,
@@ -446,6 +448,18 @@ export default function Terminal({ windowId }: AppProps) {
         after(300, () => useWindows.getState().close(windowId))
         break
       /* ---------- undocumented drawer ---------- */
+      case 'library':
+      case 'books':
+      case 'read':
+        push('')
+        push(`  ${books.length} volumes catalogued. leaving the desk…`, 'tc-amber')
+        push('  (the shelf is read-only. so is this terminal, mostly.)', 'tc-dim')
+        playBeep()
+        after(500, () => {
+          useSystem.getState().zoomOut()
+          useLibrary.getState().openLibrary()
+        })
+        break
       case 'echo':
         push(arg)
         break

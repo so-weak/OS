@@ -95,3 +95,52 @@ export const P = {
   metal: '#3a3d42',
   night: '#0a0c11',
 } as const
+
+/* ---------- the stacks (3D library, back-left corner) ----------
+   Local space: origin on the floor at the centre of the case, shelves
+   facing local +z. BOOKCASE_YAW turns that front into the room. */
+export const BOOKCASE_POS = new Vector3(-1.6, 0, -0.6)
+export const BOOKCASE_YAW = 0.45
+
+export const CASE = {
+  /** outside width / height / depth of the carcass */
+  w: 0.8,
+  h: 1.52,
+  d: 0.3,
+  /** side plank thickness */
+  side: 0.035,
+  /** plinth height */
+  plinth: 0.09,
+  /** shelf board thickness */
+  board: 0.022,
+  /** usable run for books on one shelf */
+  inner: 0.71,
+} as const
+
+/** Top surface of each book shelf (local y). Books stand on these. */
+export const SHELF_Y = [0.12, 0.46, 0.8, 1.14] as const
+/** Headroom above each shelf — the tallest volume must clear this. */
+export const SHELF_CLEAR = 0.31
+
+/** Front plane of the carcass in local z. */
+export const CASE_FRONT = CASE.d / 2
+
+const UP = new Vector3(0, 1, 0)
+
+/** Bookcase-local point -> world. Writes into `out`. */
+export function caseToWorld(local: Vector3, out: Vector3): Vector3 {
+  return out.copy(local).applyAxisAngle(UP, BOOKCASE_YAW).add(BOOKCASE_POS)
+}
+
+/** Camera pose for library view — frames the shelves and the catalogue.
+    A longer lens than the room (LIB_FOV): it crops the desk and the
+    chair out of the shot and flattens the case the way a reader
+    standing in front of it would see it. */
+export const LIB_FOV = 35
+export const LIB_CAM_TARGET = new Vector3(-1.535, 0.8, -0.465)
+/* Far enough back to hold the placard and the catalogue card in one
+   frame, and far enough left that the desk chair stays out of it. */
+export const LIB_CAM_POS = new Vector3(-1.45, 0.97, 1.93)
+
+/** Re-export so the rig can lerp between the room lens and the shelf lens. */
+export const CAM_FOV_ROOM = CAM_FOV

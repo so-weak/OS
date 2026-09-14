@@ -65,6 +65,11 @@ concept is retro-OS-portfolio, but all geometry, pixels, CSS and copy are ours.
    `src/os/apps/Snake.tsx` — pixel icon set (16×16 grids, SVG rects,
    crispEdges) for names used in registry + `default`, `os-logo`, `back`,
    `folder`, `doc`; Terminal app; Snake game.
+6. **The Stacks** — the library. Data in `src/data/library/**`, shared
+   book art in `src/library/art.ts`, the catalogue page in
+   `src/library/**`, the bookcase in `src/three/{Bookcase,CaseFittings,
+   LibraryHud}.tsx` + `libraryState.ts` + `libraryTextures.ts`, routing
+   in `src/router.tsx`. See the section below.
 
 ## Cross-module export contracts (pinned)
 
@@ -79,13 +84,81 @@ concept is retro-OS-portfolio, but all geometry, pixels, CSS and copy are ours.
 - The shell renders the BSOD overlay + konami listener from `useEggs`;
   Terminal's `crash` command calls `triggerBsod()`.
 
+## The Stacks — the library (module 6)
+
+Two halves. The bookcase in the room is the doorway; the catalogue is a
+page at `/library`. Controls that are UI in costume were tried on the
+case and removed: a shelf is a bad search box.
+
+- `src/router.tsx` — the whole router. `/` is the room, `/library` and
+  `/library/<book-id>` are the catalogue. `navigate()` pushes state and
+  fires a popstate so `useRoute()` re-reads. `App.tsx` lazily loads
+  either side, so the catalogue costs no three.js and vice versa.
+- `tools/spa-pages.ts` — build-only. GitHub Pages has no server routing,
+  so after the bundle it copies `index.html` to `dist/library/index.html`
+  (a 200 for the catalogue) and `dist/404.html` (the fallback that
+  serves `/library/<id>`). Asset URLs are absolute under `base: '/OS/'`,
+  so a copy works from any depth.
+- `src/data/library/**` — THE catalogue. Static content, authored in
+  code. `types.ts` has the `Book` shape; `index.ts` has the queries
+  (`selectBooks`, `genres`, `authors`, `genreStyle`, …). Nothing in the
+  running site may add, edit or delete a volume. The array ends with a
+  `/* @library:insert` marker — the dev-only ISBN scanner writes new
+  entries directly above it.
+- `src/library/art.ts` — the bookbinding, shared by both halves: spines,
+  cloth boards, bookplates and EAN-13 barcodes, drawn on canvas from
+  each book's own metadata. **Imports nothing from three.js on purpose**,
+  so the catalogue chunk stays free of the 3D bundle; every drawing
+  takes a `scale` so the same art serves a 30px spine and a full board.
+  Callers must wait for `useFontsReady` (`src/useFontsReady.ts`) — a
+  canvas rasterises with whatever face is loaded and never repaints.
+- `src/library/LibraryPage.tsx` + `BookSpread.tsx` + `pieces.tsx` +
+  `catalogue.css` — the page. Paper and oak, its own language rather
+  than the Win9x kit. Query state lives in the URL so a shelf is
+  shareable; `pieces.tsx` mounts the canvases into the DOM (detach on
+  cleanup, never zero the backing store — StrictMode remounts).
+- `src/three/Bookcase.tsx` — the case in the room: four shelves packed
+  from the catalogue newest-first, hover peek, the held volume (same
+  `depthTest:false` + `renderOrder` trick as Papers.tsx, for the same
+  blending reason), dust on unread books, and the secret volume that
+  swings the case open. `src/three/CaseFittings.tsx` adds the placard,
+  the picture light and the brass plate that navigates to `/library`.
+- `src/three/libraryState.ts` — `useLibrary`, now only what the room
+  needs (open / selected / flipped / lamp / secret). **Cross-module
+  contract:** `CameraRig` reads `open` to cross-fade to `LIB_CAM_POS`
+  and the longer `LIB_FOV`; `Keyboard.tsx` reads it to stand down;
+  Terminal's `library` command calls `openLibrary()`.
+- `src/three/LibraryHud.tsx` — the only DOM the shelf owns (a way back,
+  and the door to the catalogue). **Portalled to `<body>`, not `#root`**:
+  R3F is wired to `#root` as its event source and raycasts on every
+  pointer event regardless of which DOM element was hit, so an overlay
+  inside `#root` would fire its button *and* pull a book off the shelf.
+- Layout constants (`BOOKCASE_POS/YAW`, `CASE`, `SHELF_Y`, `LIB_CAM_*`,
+  `LIB_FOV`, `caseToWorld`) live in `src/three/layout.ts` with the rest
+  of the room's spatial contract. `SHELF_Y[0]` doubles as the base
+  board — do not add a second one, they end up coplanar.
+- `scan.html` + `src/dev/**` + `tools/library-writer.ts` — the ISBN
+  intake console and the dev-server middleware that writes `books.ts`.
+  `vite build` only ever builds `index.html` (pinned in
+  `vite.config.ts`) and the plugin is `apply: 'serve'`, so none of it
+  can reach production.
+
+Gotcha worth keeping: a three.js material compiles map support at
+creation, so a material that starts without a `map` ignores one attached
+later. The shelf books key their material on whether the spine texture
+has been drawn yet.
+
 ## Easter eggs (mandate: go above and beyond)
 
 Each module ships its assigned eggs — tasteful, discoverable, never
 invented resume facts. Room props react to clicks (duck, lamp, tower power
 button, floppy). Konami code → hacker mode. Terminal hides gag commands
-(`sudo`, `format c:`, `matrix`, `neofetch`, `crash`…). BIOS/BSOD carry
-period-correct jokes. Snake keeps a localStorage high score.
+(`sudo`, `format c:`, `matrix`, `neofetch`, `crash`, `library`…).
+BIOS/BSOD carry period-correct jokes. Snake keeps a localStorage high
+score. On the shelf: `SOUBHIK.SYS` is not a book (pull it and the case
+swings open), unread volumes puff dust when you lift them, whatever is
+being read right now wears a ribbon, and the catalogue page keeps the
+ribbon as a bookmark poking out of the same volume.
 
 ## Room interactivity (mandate: the room is a toy box)
 

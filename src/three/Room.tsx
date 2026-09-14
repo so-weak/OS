@@ -423,7 +423,10 @@ function Chair() {
   })
 
   return (
-    <group position={[-0.62, 0, 0.06]} rotation-y={0.55}>
+    /* Parked left of the paperwork on purpose: from the room camera the
+       chair back sits in the gap between the bookcase and the desk props
+       (paper stack, crumpled shots), so it occludes neither. */
+    <group position={[-0.58, 0, -0.02]} rotation-y={0.35}>
       <Clickable
         enabled={view === 'room'}
         label="quality assurance seat"

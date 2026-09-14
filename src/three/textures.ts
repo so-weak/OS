@@ -11,7 +11,7 @@ import {
 } from 'three'
 
 /* Deterministic PRNG so StrictMode double-renders draw identical art. */
-function mulberry(seed: number): () => number {
+export function mulberry(seed: number): () => number {
   let a = seed >>> 0
   return () => {
     a |= 0
@@ -22,7 +22,7 @@ function mulberry(seed: number): () => number {
   }
 }
 
-function makeCanvas(w: number, h: number): CanvasRenderingContext2D {
+export function makeCanvas(w: number, h: number): CanvasRenderingContext2D {
   const c = document.createElement('canvas')
   c.width = w
   c.height = h
@@ -31,7 +31,7 @@ function makeCanvas(w: number, h: number): CanvasRenderingContext2D {
   return ctx
 }
 
-function finish(ctx: CanvasRenderingContext2D, pixel = true): CanvasTexture {
+export function finish(ctx: CanvasRenderingContext2D, pixel = true): CanvasTexture {
   const tex = new CanvasTexture(ctx.canvas)
   tex.colorSpace = SRGBColorSpace
   if (pixel) {
@@ -97,7 +97,7 @@ export function pixelTextWidth(text: string): number {
   return text.length * 4 - 1
 }
 
-function drawPixelText(
+export function drawPixelText(
   ctx: CanvasRenderingContext2D,
   text: string,
   x: number,

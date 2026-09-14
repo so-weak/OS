@@ -1,73 +1,68 @@
-# React + TypeScript + Vite
+# SoubhikOS
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+An interactive 3D retro-computer portfolio. A low-poly 1990s workstation sits
+in a dark room; clicking the CRT boots "SoubhikOS", a Win9x-flavoured desktop
+whose apps are the resume. In the corner of the same room stands **The
+Stacks** — a bookcase you can walk to, pull a book off and turn over — and
+its catalogue lives at [`/library`](#the-stacks--the-library).
 
-Currently, two official plugins are available:
+Everything is original: all geometry, textures, pixel art, CSS and copy are
+generated in code. No 3D assets, no image files, no fonts beyond three
+bitmap-ish webfaces, no backend.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev      # the site
+npm run scan     # the ISBN intake console (development only)
+npm run build    # -> dist/, deployed to GitHub Pages by .github/workflows
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Architecture and module contracts: [ARCHITECTURE.md](ARCHITECTURE.md).
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## The Stacks — the library
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Two halves, each doing what it is good at.
+
+**The bookcase, in the room.** Click it (or type `library` in the SoubhikOS
+terminal) and the camera walks over. The spines are real: every title is
+stamped on a canvas drawn from that book's own metadata. Click one and the
+volume lifts out; click it again to turn it over and read the bookplate — the
+note, the stars, the date you finished it. `SOUBHIK.SYS` on the top shelf is
+not a book. Unread volumes puff dust when you lift them. Whatever is being
+read right now wears a ribbon.
+
+There is deliberately **no search, no filter and no tab strip on the case**.
+A shelf makes a bad search box, and controls built out of brass and card stock
+end up looking like a toolbar in costume. The brass plate on the plinth —
+`CONSULT THE CATALOGUE` — opens the real thing.
+
+**The catalogue, at `/library`.** A page in its own right: a real search field,
+genre chips, an author list, sort orders, and the five shelves (all, latest,
+picks, reading, unread) as guide-card tabs. Two views — a wooden **shelf** of
+spines at their true relative proportions, which reflows into more shelves as
+the window narrows, and a **card** grid of cloth boards. Click any volume for
+its spread: the front board on the left, the bookplate on the right, with
+prev/next through whatever shelf you were looking at.
+
+Every filter lives in the URL, so a shelf is shareable
+(`/library?shelf=picks&genre=Fiction`), and each volume has its own address
+(`/library/dune`). GitHub Pages has no server-side routing, so the build emits
+`library/index.html` and a `404.html` fallback — see `tools/spa-pages.ts`.
+
+The two halves share one set of drawings (`src/library/art.ts`): the same
+canvas that becomes a texture on a 3D book becomes an `<img>`-shaped canvas on
+the page. Landing on `/library` loads no three.js at all; the room and the
+catalogue are separate chunks.
+
+## Layout
+
+```
+src/router.tsx  where you are: the room (/) or the catalogue (/library)
+src/three/      the room, the camera rig, the bookcase
+src/os/         SoubhikOS: shell, window manager, apps, boot, sound
+src/library/    the catalogue page + the book art both halves share
+src/data/       resume.ts (the resume) and library/ (the catalogue data)
+src/dev/        the ISBN intake console — dev only, never built
+tools/          dev-server plugin that writes books.ts, build plugin that
+                emits the static entry points for /library
 ```

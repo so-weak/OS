@@ -1,5 +1,6 @@
 import { Canvas } from '@react-three/fiber'
 import { CAM_FOV } from '../constants'
+import Bookcase from './Bookcase'
 import CameraRig from './CameraRig'
 import DayNight from './DayNight'
 import Desk, { Cables } from './Desk'
@@ -11,6 +12,7 @@ import Lamp from './Lamp'
 import Monitor from './Monitor'
 import Papers from './Papers'
 import Room from './Room'
+import LibraryHud from './LibraryHud'
 import RoomTooltip, { HireToast } from './Tooltip'
 import Tower from './Tower'
 import TrashGame from './TrashGame'
@@ -71,11 +73,13 @@ export default function Scene() {
         <Lamp />
         <Duck />
         <Papers />
+        <Bookcase />
         <TrashGame />
         <DustMotes />
       </Canvas>
       <RoomTooltip />
       <HireToast />
+      <LibraryHud />
     </>
   )
 }

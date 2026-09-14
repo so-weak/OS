@@ -11,6 +11,7 @@ import {
 } from 'three'
 import { useSystem } from '../os/store'
 import { playBeep, playClick } from '../os/sound'
+import { useLibrary } from './libraryState'
 import { useRoom } from './roomState'
 import { DESK_TOP, P } from './layout'
 
@@ -197,6 +198,10 @@ export default function Keyboard() {
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (useSystem.getState().view !== 'room') return
+      // typing into a field (or searching the library) is not desk typing
+      if (useLibrary.getState().open) return
+      const el = e.target as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return
       const idx = codeIndex.get(e.code)
       if (idx !== undefined) {
         target.current[idx] = 1

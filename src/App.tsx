@@ -1,20 +1,42 @@
-import { Suspense, useEffect } from 'react'
-import Scene from './three/Scene'
+import { Suspense, lazy, useEffect } from 'react'
 import { useSystem } from './os/store'
+import { useRoute } from './router'
+import { useLibrary } from './three/libraryState'
 import { useRoom } from './three/roomState'
 import './styles/hud.css'
 
 /* =====================================================================
-   Top level: the 3D room always renders; the OS lives on the CRT glass
-   inside the scene (drei <Html transform>). A thin HUD shows hints and
-   the "step back" control when zoomed in.
+   Two places to be. `/` is the room — the 3D scene with the OS living
+   on the CRT glass. `/library` is the catalogue, a page in its own
+   right; the bookcase in the room is the door to it.
+
+   Both are lazy so neither pays for the other: landing on /library
+   loads no three.js, and the room never loads the catalogue's art
+   until you walk over to the shelf.
    ===================================================================== */
 
+const Scene = lazy(() => import('./three/Scene'))
+const LibraryPage = lazy(() => import('./library/LibraryPage'))
+
 export default function App() {
+  const route = useRoute()
+
+  if (route.name === 'library') {
+    return (
+      <Suspense fallback={<CatalogueVeil />}>
+        <LibraryPage bookId={route.bookId} />
+      </Suspense>
+    )
+  }
+  return <Room />
+}
+
+function Room() {
   const view = useSystem((s) => s.view)
   const power = useSystem((s) => s.power)
   const zoomOut = useSystem((s) => s.zoomOut)
   const paperUp = useRoom((s) => s.paperUp)
+  const atShelf = useLibrary((s) => s.open)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -30,7 +52,7 @@ export default function App() {
         <Scene />
       </Suspense>
 
-      {view === 'room' && !paperUp && (
+      {view === 'room' && !paperUp && !atShelf && (
         <div className="hud-hint t-term">
           {power === 'off'
             ? 'click the monitor to power on'
@@ -55,6 +77,20 @@ function LoaderVeil() {
           <div className="loader-fill" />
         </div>
         <div>loading hardware…</div>
+      </div>
+    </div>
+  )
+}
+
+function CatalogueVeil() {
+  return (
+    <div className="loader-veil t-term">
+      <div className="loader-box">
+        <div>THE STACKS</div>
+        <div className="loader-bar">
+          <div className="loader-fill" />
+        </div>
+        <div>fetching the catalogue…</div>
       </div>
     </div>
   )
