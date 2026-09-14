@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { SCREEN_W, SCREEN_H } from '../constants'
 import { getApp } from './registry'
+import { useWorld } from '../world'
 
 /* =====================================================================
    System state machine
@@ -30,7 +31,7 @@ interface SystemState {
 export const useSystem = create<SystemState>((set, get) => ({
   power: 'off',
   view: 'room',
-  muted: false,
+  muted: useWorld.getState().muted,
 
   powerOn: () => {
     const { power } = get()
@@ -52,7 +53,11 @@ export const useSystem = create<SystemState>((set, get) => ({
     if (v === 'zooming-in') set({ view: 'screen' })
     else if (v === 'zooming-out') set({ view: 'room' })
   },
-  toggleMuted: () => set((s) => ({ muted: !s.muted })),
+  toggleMuted: () =>
+    set((s) => {
+      useWorld.getState().setMuted(!s.muted)
+      return { muted: !s.muted }
+    }),
 }))
 
 /* =====================================================================

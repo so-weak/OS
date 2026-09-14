@@ -34,6 +34,9 @@ export default function CameraRig() {
   const wantTgt = useRef(new Vector3())
   /** 0 = room, 1 = parked at the bookcase */
   const libMix = useRef(0)
+  /** the opening dolly: slow, like a camera settling on a tripod; any
+      click (view change) or arrival ends it */
+  const intro = useRef(true)
 
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05)
@@ -66,7 +69,9 @@ export default function CameraRig() {
     }
 
     const tweening = view === 'zooming-in' || view === 'zooming-out'
-    const lambda = tweening ? 3.4 : 5.2
+    if (intro.current && (view !== 'room' || pos.current.distanceToSquared(ROOM_CAM_POS) < 1e-4))
+      intro.current = false
+    const lambda = intro.current ? 1.8 : tweening ? 3.4 : 5.2
     dampV3(pos.current, wantPos.current, lambda, dt)
     dampV3(tgt.current, wantTgt.current, lambda, dt)
 

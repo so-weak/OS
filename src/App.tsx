@@ -3,6 +3,7 @@ import { useSystem } from './os/store'
 import { useRoute } from './router'
 import { useLibrary } from './three/libraryState'
 import { useRoom } from './three/roomState'
+import WorldClock from './WorldClock'
 import './styles/hud.css'
 
 /* =====================================================================
@@ -21,14 +22,19 @@ const LibraryPage = lazy(() => import('./library/LibraryPage'))
 export default function App() {
   const route = useRoute()
 
-  if (route.name === 'library') {
-    return (
-      <Suspense fallback={<CatalogueVeil />}>
-        <LibraryPage bookId={route.bookId} />
-      </Suspense>
-    )
-  }
-  return <Room />
+  return (
+    <>
+      {/* visits, the desk's clock, the one idle detector */}
+      <WorldClock />
+      {route.name === 'library' ? (
+        <Suspense fallback={<CatalogueVeil />}>
+          <LibraryPage bookId={route.bookId} />
+        </Suspense>
+      ) : (
+        <Room />
+      )}
+    </>
+  )
 }
 
 function Room() {

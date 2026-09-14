@@ -7,18 +7,17 @@ import {
   type HemisphereLight,
 } from 'three'
 import { P } from './layout'
-import { useRoom } from './roomState'
+import { live } from './live'
 
 /* =====================================================================
    Day/night base lighting. Owns the ambient + hemisphere lights and the
-   scene background, cross-fading them when the window is clicked
-   (roomState.isDay). The lamp, moon/sun spill and window art react in
-   their own files off the same store; everything damps at the same rate
-   so the whole room eases through one sunrise.
+   scene background, cross-fading them with `live.day` (damped once per
+   frame in WorldFrame from roomState.isDay). The lamp, window and dust
+   read the same value, so the whole room eases through one sunrise.
    ===================================================================== */
 
-/** Shared damping rate for every day/night crossfade (≈1.5s sunrise). */
-export const DAY_FADE = 2.2
+/** Kept here for older imports; the damping itself lives in WorldFrame. */
+export { DAY_FADE } from './live'
 
 const NIGHT = {
   bg: new Color(P.night),
@@ -40,18 +39,10 @@ const DAY = {
 export default function DayNight() {
   const amb = useRef<AmbientLight>(null!)
   const hemi = useRef<HemisphereLight>(null!)
-  const mix = useRef(0)
   const scene = useThree((s) => s.scene)
 
-  useFrame((_, delta) => {
-    const dt = Math.min(delta, 0.05)
-    mix.current = MathUtils.damp(
-      mix.current,
-      useRoom.getState().isDay ? 1 : 0,
-      DAY_FADE,
-      dt,
-    )
-    const m = mix.current
+  useFrame(() => {
+    const m = live.day
     amb.current.color.copy(NIGHT.amb).lerp(DAY.amb, m)
     amb.current.intensity = MathUtils.lerp(NIGHT.ambI, DAY.ambI, m)
     hemi.current.color.copy(NIGHT.sky).lerp(DAY.sky, m)

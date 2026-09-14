@@ -16,6 +16,8 @@ import LibraryHud from './LibraryHud'
 import RoomTooltip, { HireToast } from './Tooltip'
 import Tower from './Tower'
 import TrashGame from './TrashGame'
+import RoomWindow from './Window'
+import WorldFrame from './WorldFrame'
 import { INTRO_CAM_POS, P } from './layout'
 
 /* =====================================================================
@@ -59,11 +61,14 @@ export default function Scene() {
       >
         <color attach="background" args={[P.night]} />
 
+        {/* damps every shared light value first (priority -1) */}
+        <WorldFrame />
         <DayNight />
 
         <CameraRig />
 
         <Room />
+        <RoomWindow />
         <Desk />
         <Drawers />
         <Cables />

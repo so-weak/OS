@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useWorld } from '../world'
 
 /* =====================================================================
    Easter-egg state shared across modules. The OS shell renders the
@@ -12,7 +13,8 @@ interface EggsState {
   bsod: boolean
   /** konami-code "hacker mode" — green phosphor look on the OS root */
   hacker: boolean
-  /** clicks on the rubber duck in the 3D room (for the persistent) */
+  /** clicks on the rubber duck in the 3D room — persisted by the world
+      store, mirrored here so the duck keeps its colour across visits */
   duckClicks: number
   triggerBsod: () => void
   dismissBsod: () => void
@@ -23,9 +25,9 @@ interface EggsState {
 export const useEggs = create<EggsState>((set) => ({
   bsod: false,
   hacker: false,
-  duckClicks: 0,
+  duckClicks: useWorld.getState().duckClicks,
   triggerBsod: () => set({ bsod: true }),
   dismissBsod: () => set({ bsod: false }),
   toggleHacker: () => set((s) => ({ hacker: !s.hacker })),
-  clickDuck: () => set((s) => ({ duckClicks: s.duckClicks + 1 })),
+  clickDuck: () => set({ duckClicks: useWorld.getState().bumpDuck() }),
 }))

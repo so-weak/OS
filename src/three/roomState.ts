@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useWorld, wantsDay } from '../world'
 
 /* =====================================================================
    Room-local interactive state (owned by the 3D module).
@@ -15,9 +16,12 @@ import { create } from 'zustand'
 export const KNOB_LEVELS = [0.76, 0.88, 1, 1.12, 1.24] as const
 
 interface RoomState {
-  /** day/night — toggled by clicking the window ("let the sun in") */
+  /** day/night — toggled by clicking the window ("let the sun in").
+      Seeded from the world (first visit: night; later: the desk's
+      clock); WorldFrame may call setDay when the clock crosses dusk. */
   isDay: boolean
   toggleDay: () => void
+  setDay: (day: boolean) => void
   /** desk lamp on/off — toggled by clicking the lamp (easter egg) */
   lampOn: boolean
   toggleLamp: () => void
@@ -44,8 +48,16 @@ interface RoomState {
 }
 
 export const useRoom = create<RoomState>((set) => ({
-  isDay: false,
-  toggleDay: () => set((s) => ({ isDay: !s.isDay })),
+  isDay: wantsDay(),
+  toggleDay: () =>
+    set((s) => {
+      const isDay = !s.isDay
+      const world = useWorld.getState()
+      world.setDayOverride(isDay ? 'day' : 'night')
+      if (isDay) world.mark('sunrise')
+      return { isDay }
+    }),
+  setDay: (isDay) => set({ isDay }),
   lampOn: true,
   toggleLamp: () => set((s) => ({ lampOn: !s.lampOn })),
   floppyOut: false,

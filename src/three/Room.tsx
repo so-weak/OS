@@ -9,29 +9,23 @@ import {
   Object3D,
   type CanvasTexture,
   type Group,
-  type MeshBasicMaterial,
-  type PointLight,
-  type SpotLight,
 } from 'three'
 import { useSystem } from '../os/store'
 import { playClick } from '../os/sound'
 import Clickable from './Clickable'
-import { DAY_FADE } from './DayNight'
 import { P } from './layout'
-import { useRoom } from './roomState'
 import {
-  makeDayWindow,
   makeFloppyPoster,
-  makeNightWindow,
   makeRocketPoster,
   makeWallNoise,
   makeWood,
 } from './textures'
 
 /* =====================================================================
-   The dark cozy room: walls, floor, rug, night window, posters, shelf
-   with books, chair, baseboards, wall socket. Static decor only —
-   interactive props live in their own files.
+   The dark cozy room: walls, floor, rug, posters, shelf with books,
+   chair, baseboards, wall socket. Static decor only — interactive props
+   live in their own files, and the window (the room's one scenery
+   control) lives in Window.tsx.
    ===================================================================== */
 
 export default function Room() {
@@ -111,135 +105,11 @@ export default function Room() {
         <meshStandardMaterial color="#201f24" roughness={0.85} />
       </mesh>
 
-      <RoomWindow />
       <Poster kind="rocket" position={[-0.5, 1.5, -1.07]} w={0.32} h={0.42} tilt={-0.012} />
       <Poster kind="floppy" position={[0.52, 1.56, -1.07]} w={0.24} h={0.32} tilt={0.02} />
       <Shelf />
       <Chair />
       <WallSocket />
-    </group>
-  )
-}
-
-/* ---------- the window: night by default, day on click ---------- */
-const MOON_SPILL = new Color('#7b93c9')
-const SUN_SPILL = new Color('#ffdfae')
-
-function RoomWindow() {
-  const view = useSystem((s) => s.view)
-  const isDay = useRoom((s) => s.isDay)
-  const toggleDay = useRoom((s) => s.toggleDay)
-
-  const nightTex = useMemo(() => makeNightWindow(), [])
-  const dayTex = useMemo(() => makeDayWindow(), [])
-  useEffect(
-    () => () => {
-      nightTex.dispose()
-      dayTex.dispose()
-    },
-    [nightTex, dayTex],
-  )
-
-  const dayMat = useRef<MeshBasicMaterial>(null!)
-  const spill = useRef<PointLight>(null!)
-  const sun = useRef<SpotLight>(null!)
-  const mix = useRef(0)
-
-  // the sun shaft leans down-right across the rug and desk
-  const sunTarget = useMemo(() => {
-    const o = new Object3D()
-    o.position.set(0.9, -1.35, 1.45)
-    return o
-  }, [])
-
-  useFrame((_, delta) => {
-    const dt = Math.min(delta, 0.05)
-    mix.current = MathUtils.damp(
-      mix.current,
-      useRoom.getState().isDay ? 1 : 0,
-      DAY_FADE,
-      dt,
-    )
-    const m = mix.current
-    dayMat.current.opacity = m
-    spill.current.color.copy(MOON_SPILL).lerp(SUN_SPILL, m)
-    spill.current.intensity = MathUtils.lerp(1.5, 2.6, m)
-    sun.current.intensity = m * 3.4
-  })
-
-  const x = -1.18
-  const y = 1.52
-  return (
-    <group position={[x, y, -1.07]}>
-      <Clickable
-        enabled={view === 'room'}
-        label={isDay ? 'bring back the night' : 'let the sun in'}
-        onActivate={() => {
-          playClick()
-          toggleDay()
-        }}
-      >
-        {/* frame */}
-        <mesh castShadow>
-          <boxGeometry args={[0.72, 0.92, 0.045]} />
-          <meshStandardMaterial color="#1c1e22" roughness={0.8} />
-        </mesh>
-        {/* night sky (unlit so it reads as light) */}
-        <mesh position={[0, 0, 0.024]}>
-          <planeGeometry args={[0.62, 0.82]} />
-          <meshBasicMaterial map={nightTex} color="#b9c4de" toneMapped={false} />
-        </mesh>
-        {/* day sky cross-fades on top of it */}
-        <mesh position={[0, 0, 0.0255]}>
-          <planeGeometry args={[0.62, 0.82]} />
-          <meshBasicMaterial
-            ref={dayMat}
-            map={dayTex}
-            transparent
-            opacity={0}
-            toneMapped={false}
-          />
-        </mesh>
-        {/* cross mullions */}
-        <mesh position={[0, 0, 0.03]}>
-          <boxGeometry args={[0.62, 0.024, 0.012]} />
-          <meshStandardMaterial color="#1c1e22" roughness={0.8} />
-        </mesh>
-        <mesh position={[0, 0, 0.03]}>
-          <boxGeometry args={[0.024, 0.82, 0.012]} />
-          <meshStandardMaterial color="#1c1e22" roughness={0.8} />
-        </mesh>
-        {/* sill */}
-        <mesh position={[0, -0.48, 0.05]} castShadow>
-          <boxGeometry args={[0.78, 0.03, 0.09]} />
-          <meshStandardMaterial color="#26282e" roughness={0.85} />
-        </mesh>
-      </Clickable>
-      {/* moonlight / sunlight spilling in */}
-      <pointLight
-        ref={spill}
-        position={[0, 0.1, 0.35]}
-        color="#7b93c9"
-        intensity={1.5}
-        distance={4}
-        decay={2}
-      />
-      {/* daytime sun shaft (outside Clickable so raycasts stay cheap) */}
-      <primitive object={sunTarget} />
-      <spotLight
-        ref={sun}
-        position={[0.05, 0.15, 0.03]}
-        target={sunTarget}
-        color={SUN_SPILL}
-        intensity={0}
-        angle={0.62}
-        penumbra={0.7}
-        distance={6.5}
-        decay={1.1}
-        castShadow
-        shadow-mapSize={[512, 512]}
-        shadow-bias={-0.002}
-      />
     </group>
   )
 }

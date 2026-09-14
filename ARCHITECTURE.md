@@ -12,14 +12,15 @@ concept is retro-OS-portfolio, but all geometry, pixels, CSS and copy are ours.
 - All OS styling composes the kit in `src/styles/win95.css` + tokens in
   `src/styles/tokens.css` (CSS vars like `--face`, `--bevel-out`). New CSS
   files are fine for layout, but colors/fonts MUST come from tokens.
-- Fonts: `var(--font-ui)` (DotGothic16) for OS chrome/apps, `var(--font-term)`
-  (VT323) for BIOS/terminal, `var(--font-label)` (Silkscreen) for tiny labels.
-- Font sizes are grid-locked — these are bitmap-style faces and off-grid
-  sizes render as mud (font-smoothing is off): DotGothic16 ONLY at 16px
-  (or 32px for big headers; 24px tolerated for mid headers), Silkscreen
-  at 8px/16px, VT323 at 16px inside the OS. Small/metadata text (dates,
-  badges, counts, fine print) is VT323 16px, not a shrunken DotGothic.
-  Never introduce 11–14px or fractional font sizes in OS CSS.
+- Fonts: `var(--font-ui)` (IBM Plex Mono — what is actually installed;
+  DotGothic16 never was) for OS chrome/apps, `var(--font-term)` (VT323)
+  for BIOS/terminal, `var(--font-label)` (Silkscreen) for tiny labels.
+- Font sizes are grid-locked for the bitmap faces — off-grid sizes render
+  as mud with font-smoothing off: Plex Mono at 16px (32px big headers,
+  24px mid headers), Silkscreen at 8px/16px, VT323 at 16px inside the OS
+  (18–22px allowed for the room HUD). Small/metadata text (dates, badges,
+  counts, fine print) is VT323 16px. Never introduce 9–14px or fractional
+  font sizes anywhere — OS CSS, HUD, tooltips included.
 - TypeScript strict; no `any` unless unavoidable. No new npm deps.
 - React 19 + three/@react-three/fiber@9 + drei@10 + zustand@5 are installed.
 - Keep `npx tsc --noEmit` clean for YOUR files.
@@ -38,6 +39,11 @@ concept is retro-OS-portfolio, but all geometry, pixels, CSS and copy are ours.
   paths under /projects/), experience, education, awards, certifications.
 - `src/os/eggs.ts` — `useEggs` shared easter-egg store (bsod, hacker mode,
   duck clicks). Shell renders the overlays; anyone may trigger them.
+- `src/world.ts` — THE memory, clock and idle detector (see "The world"
+  below). The only file that touches localStorage.
+- `src/three/live.ts` — the per-frame damped light values the whole room
+  reads (`live.day/dusk/lamp/crt/rain/flash/idle`), `canTransition()`
+  and `strike()`.
 
 ## Module ownership (one agent each — do not touch other modules)
 
@@ -70,6 +76,9 @@ concept is retro-OS-portfolio, but all geometry, pixels, CSS and copy are ours.
    `src/library/**`, the bookcase in `src/three/{Bookcase,CaseFittings,
    LibraryHud}.tsx` + `libraryState.ts` + `libraryTextures.ts`, routing
    in `src/router.tsx`. See the section below.
+7. **The world** — `src/world.ts`, `src/WorldClock.tsx`, `src/three/live.ts`,
+   `src/three/WorldFrame.tsx`. Memory, clock, idle, the per-frame light
+   values. See "The world" below.
 
 ## Cross-module export contracts (pinned)
 
@@ -147,6 +156,54 @@ Gotcha worth keeping: a three.js material compiles map support at
 creation, so a material that starts without a `map` ignores one attached
 later. The shelf books key their material on whether the spine texture
 has been drawn yet.
+
+## The world — memory, clock, idle (module 7)
+
+`src/world.ts` is top-level like `constants.ts`: both `src/os` and
+`src/three` import it, so it imports neither.
+
+- **Persistence.** `useWorld` (zustand `persist`, key `soubhikos-world`,
+  versioned) is the ONLY code allowed to touch localStorage. It keeps:
+  `visits/firstAt/lastAt`, `found` (the ledger), `duckClicks`, `snakeHi`
+  (migrated from the old Snake key), `muted`, `windowTouched`, `blinds`.
+  Writes go through named actions (`mark`, `bumpDuck`, `setSnakeHi`,
+  `setMuted`, `setDayOverride`, `setBlinds`, `forget`). `useSystem.muted`
+  and `useRoom.isDay` are seeded from it; `useEggs.duckClicks` mirrors it.
+- **The ledger.** `LEDGER` lists every secret (id, riddle, done-line).
+  The file that owns a moment calls `useWorld.getState().mark('<id>')`.
+  Payoffs render inside the fiction only (terminal, dialog, drawer note,
+  About box) — never a toast or HUD over the room.
+- **Clock.** The desk is in Bengaluru and the LIGHT follows Bengaluru
+  time (`hour`, refreshed by `<WorldClock/>` in App every 30 s); the
+  visitor's own clock (`localHour`) is for greetings and the taskbar.
+  Rule: a FIRST visit is always the night hero shot; from the second
+  visit, or once the window has been clicked, `wantsDay()` follows the
+  desk's clock. A window click is a session override (`dayOverride`).
+  `weather` is chosen once per calendar day (`weatherForDay`); a first
+  visit never opens on a storm.
+- **Idle.** `<WorldClock/>` runs the one idle detector (40 s without
+  pointer/key/wheel, paused while hidden). Moth, screensaver and burn-in
+  read `useWorld.idle`; none run their own timers.
+- **`live` (src/three/live.ts).** `<WorldFrame/>` (priority -1, first in
+  Scene) damps `live.day/dusk/lamp/crt/rain/flash/idle` once per frame
+  with `DAY_FADE`; every other useFrame reads them. `live.settling` is
+  true while anything is still moving (drei Environment re-bake cue).
+  Nobody else writes to `live`. `canTransition()` = view is 'room', no
+  paper lifted, bookcase closed — the gate for every scenery change the
+  world makes on its own (clock crossing dusk, lightning, moth). The
+  clock never moves the light while someone is reading.
+- **Scenery rules (agreed in review).** Discrete events (lightning) only
+  via `strike()`: room view only, never in the first 60 s, never on a
+  first visit, honour `prefers-reduced-motion` (`reducedMotion()`).
+  `document.hidden` pauses every scenery timer. Slow drift is fine.
+- **Sound.** Everything audible goes through `src/os/sound.ts` and obeys
+  `muted`. No auto-playing ambient beds. New one-shots: named exports.
+- **Lights budget.** The room already carries ~10 lights per lit fragment.
+  A new light must retire one. drei `<Environment>` re-bakes by remount
+  (`key`) on discrete states, never `frames={Infinity}`; `ContactShadows`
+  bake with `frames={1}` (+ a `key` bump on events), never `Infinity`.
+- **Window.** `src/three/Window.tsx` owns everything that comes through
+  the glass — sky art, moon/sun spill, sun shaft, dusk, blinds, lightning.
 
 ## Easter eggs (mandate: go above and beyond)
 
