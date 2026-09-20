@@ -45,6 +45,20 @@ export const GLASS_WORLD_CENTER = GLASS_LOCAL.clone()
   .add(MON_POS)
 export const GLASS_WORLD_NORMAL = new Vector3(0, 0, 1).applyEuler(monEuler)
 
+/* ---------- the window opening in the back wall ----------
+   Shared by BackWall.tsx (cuts the hole), Window.tsx (frame, glass, sky
+   layers) and Room.tsx (things that must clear it). `wallZ` is the plane
+   of the back wall; the sky layers sit BEHIND it (more negative z). */
+export const WINDOW = {
+  x: -1.18,
+  y: 1.52,
+  wallZ: -1.08,
+  glassW: 0.62,
+  glassH: 0.82,
+  frameW: 0.72,
+  frameH: 0.92,
+} as const
+
 /* ---------- tower ---------- */
 export const TOWER_POS = new Vector3(0.98, 0.25, -0.64)
 export const TOWER_SIZE = { w: 0.22, h: 0.5, d: 0.48 } as const

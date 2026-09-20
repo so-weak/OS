@@ -12,6 +12,7 @@ import {
 import { awards, experience } from '../data/resume'
 import { useSystem } from '../os/store'
 import { playClick } from '../os/sound'
+import BackWall from './BackWall'
 import Chair from './Chair'
 import Clickable from './Clickable'
 import { P } from './layout'
@@ -100,17 +101,8 @@ export default function Room() {
         <meshStandardMaterial color="#16302e" roughness={1} />
       </mesh>
 
-      {/* back wall */}
-      <mesh position={[0.1, 1.3, -1.08]} receiveShadow>
-        <planeGeometry args={[4.6, 2.6]} />
-        <meshStandardMaterial
-          map={wall.map}
-          bumpMap={wall.bumpMap}
-          bumpScale={0.003}
-          roughnessMap={wall.roughnessMap}
-          roughness={1}
-        />
-      </mesh>
+      {/* back wall (its own file: the window opening is cut there) */}
+      <BackWall surface={wall} />
       {/* left wall */}
       <mesh
         position={[-2.05, 1.3, 0.35]}

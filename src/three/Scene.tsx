@@ -8,6 +8,7 @@ import DayNight from './DayNight'
 import Desk, { Cables } from './Desk'
 import Drawers from './Drawers'
 import Duck from './Duck'
+import DeskClutter from './DeskClutter'
 import DustMotes from './DustMotes'
 import Keyboard from './Keyboard'
 import Lamp from './Lamp'
@@ -16,6 +17,7 @@ import Papers from './Papers'
 import Room from './Room'
 import LibraryHud from './LibraryHud'
 import Scenery from './Scenery'
+import SetDressing from './SetDressing'
 import RoomTooltip from './Tooltip'
 import Tower from './Tower'
 import TrashGame from './TrashGame'
@@ -45,6 +47,12 @@ import { INTRO_CAM_POS, P } from './layout'
      inside it.
    ===================================================================== */
 
+declare global {
+  interface Window {
+    __gl?: import('three').WebGLRenderer
+  }
+}
+
 export default function Scene() {
   /* R-P10: cap pixel ratio at 1.5 and drop to 1 when frames stutter */
   const [dpr, setDpr] = useState<number | [number, number]>([1, 1.5])
@@ -60,6 +68,10 @@ export default function Scene() {
           position: [INTRO_CAM_POS.x, INTRO_CAM_POS.y, INTRO_CAM_POS.z],
         }}
         gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
+        onCreated={({ gl }) => {
+          // dev only: window.__gl.info.render → { calls, triangles } for perf checks
+          if (import.meta.env.DEV) window.__gl = gl
+        }}
         eventSource={document.getElementById('root') as HTMLElement}
         eventPrefix="client"
         style={{ position: 'fixed', inset: 0 }}
@@ -89,6 +101,8 @@ export default function Scene() {
         <DustMotes />
         {/* the living-world props: wall clock, moth, weather runner */}
         <Scenery />
+        <DeskClutter />
+        <SetDressing />
       </Canvas>
       <RoomTooltip />
       <LibraryHud />
