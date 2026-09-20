@@ -3,12 +3,14 @@ import { useSystem, useWindows, useActiveWindowId } from '../store'
 import { getApp } from '../registry'
 import { AppIcon } from '../icons/AppIcon'
 import { playClick } from '../sound'
+import { bengaluruHour } from '../../world'
 import { GlyphSpeaker, GlyphSpeakerMuted } from './glyphs'
 
 /* =====================================================================
    Taskbar: Start button, one button per window (pressed = active),
    system tray with mute toggle + live clock.
-   Easter egg: clicking the clock toggles seconds display.
+   Clicking the clock cycles the visitor's time with the desk's own
+   ("BLR 23:40") — the two clocks the Welcome window bridges.
    ===================================================================== */
 
 export default function Taskbar() {
@@ -87,7 +89,7 @@ export default function Taskbar() {
 
 function Clock() {
   const [now, setNow] = useState(() => new Date())
-  const [showSeconds, setShowSeconds] = useState(false)
+  const [deskTime, setDeskTime] = useState(false)
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000)
@@ -95,17 +97,27 @@ function Clock() {
   }, [])
 
   const p = (n: number) => String(n).padStart(2, '0')
-  const label = showSeconds
-    ? `${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`
-    : `${p(now.getHours())}:${p(now.getMinutes())}`
+  let label: string
+  if (deskTime) {
+    const h = bengaluruHour(now)
+    const hh = Math.floor(h)
+    const mm = Math.round((h - hh) * 60)
+    label = `BLR ${p(hh)}:${p(mm)}`
+  } else {
+    label = `${p(now.getHours())}:${p(now.getMinutes())}`
+  }
+
+  const hint = deskTime
+    ? "the desk's time — click for yours"
+    : "your time — click for the desk's"
 
   return (
     <span
       className="tb-clock"
-      title="click for seconds"
+      title={hint}
       onClick={() => {
         playClick()
-        setShowSeconds((s) => !s)
+        setDeskTime((s) => !s)
       }}
     >
       {label}

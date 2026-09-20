@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
+import { ContactShadows } from '@react-three/drei'
 import {
   BoxGeometry,
   Color,
@@ -10,15 +11,20 @@ import {
   type CanvasTexture,
   type Group,
 } from 'three'
+import { awards, experience } from '../data/resume'
 import { useSystem } from '../os/store'
 import { playClick } from '../os/sound'
+import { useWorld } from '../world'
 import Clickable from './Clickable'
 import { P } from './layout'
 import {
+  disposeSurface,
   makeFloppyPoster,
+  makeLabel,
   makeRocketPoster,
-  makeWallNoise,
-  makeWood,
+  makeWallMaps,
+  makeWoodMaps,
+  repeatSurface,
 } from './textures'
 
 /* =====================================================================
@@ -29,23 +35,28 @@ import {
    ===================================================================== */
 
 export default function Room() {
-  const floorTex = useMemo(() => {
-    const t = makeWood(P.floorWood, '#2c1d12', 3)
-    t.repeat.set(3, 2.6)
-    return t
-  }, [])
-  const wallTex = useMemo(() => {
-    const t = makeWallNoise(P.wallA)
-    t.repeat.set(4, 3)
-    return t
-  }, [])
+  const gl = useThree((s) => s.gl)
+  const aniso = gl.capabilities.getMaxAnisotropy()
+  const floor = useMemo(
+    () => repeatSurface(makeWoodMaps(P.floorWood, '#2c1d12', 3, aniso), 3, 2.6),
+    [aniso],
+  )
+  const wall = useMemo(
+    () => repeatSurface(makeWallMaps(P.wallA, 11, aniso), 4, 3),
+    [aniso],
+  )
+  const sideWall = useMemo(
+    () => repeatSurface(makeWallMaps('#272b35', 12, aniso), 3.4, 3),
+    [aniso],
+  )
 
   useEffect(
     () => () => {
-      floorTex.dispose()
-      wallTex.dispose()
+      disposeSurface(floor)
+      disposeSurface(wall)
+      disposeSurface(sideWall)
     },
-    [floorTex, wallTex],
+    [floor, wall, sideWall],
   )
 
   return (
@@ -57,8 +68,28 @@ export default function Room() {
         receiveShadow
       >
         <planeGeometry args={[4.6, 3.9]} />
-        <meshStandardMaterial map={floorTex} roughness={0.92} />
+        <meshStandardMaterial
+          map={floor.map}
+          bumpMap={floor.bumpMap}
+          bumpScale={0.0025}
+          roughnessMap={floor.roughnessMap}
+          roughness={1}
+        />
       </mesh>
+      {/* baked contact darkening under everything that stands on the
+          floor (chair, desk legs, tower, bin, bookcase). frames=1: one
+          bake at mount. Above the rug (0.006); renderOrder -1 so it can
+          never land over the lifted paper (renderOrder 50). */}
+      <ContactShadows
+        frames={1}
+        position={[0.1, 0.008, 0.35]}
+        scale={[4.6, 3.9]}
+        resolution={1024}
+        blur={2.5}
+        far={0.6}
+        opacity={0.55}
+        renderOrder={-1}
+      />
 
       {/* rug */}
       <mesh rotation-x={-Math.PI / 2} position={[-0.42, 0.004, 0.28]}>
@@ -73,7 +104,13 @@ export default function Room() {
       {/* back wall */}
       <mesh position={[0.1, 1.3, -1.08]} receiveShadow>
         <planeGeometry args={[4.6, 2.6]} />
-        <meshStandardMaterial map={wallTex} roughness={0.96} />
+        <meshStandardMaterial
+          map={wall.map}
+          bumpMap={wall.bumpMap}
+          bumpScale={0.003}
+          roughnessMap={wall.roughnessMap}
+          roughness={1}
+        />
       </mesh>
       {/* left wall */}
       <mesh
@@ -82,7 +119,13 @@ export default function Room() {
         receiveShadow
       >
         <planeGeometry args={[3.9, 2.6]} />
-        <meshStandardMaterial color="#272b35" roughness={0.96} />
+        <meshStandardMaterial
+          map={sideWall.map}
+          bumpMap={sideWall.bumpMap}
+          bumpScale={0.003}
+          roughnessMap={sideWall.roughnessMap}
+          roughness={1}
+        />
       </mesh>
       {/* right wall */}
       <mesh
@@ -91,7 +134,13 @@ export default function Room() {
         receiveShadow
       >
         <planeGeometry args={[3.9, 2.6]} />
-        <meshStandardMaterial color="#272b35" roughness={0.96} />
+        <meshStandardMaterial
+          map={sideWall.map}
+          bumpMap={sideWall.bumpMap}
+          bumpScale={0.003}
+          roughnessMap={sideWall.roughnessMap}
+          roughness={1}
+        />
       </mesh>
       {/* ceiling */}
       <mesh position={[0.1, 2.6, 0.35]} rotation-x={Math.PI / 2}>
@@ -167,14 +216,42 @@ const BOOK_COLORS = [
   '#413a5e',
 ]
 
+/* the binders on the shelf are the three employers, straight from the
+   resume: "Fair Isaac Corporation (FICO)" → FICO, "PayU (Wibmo)" → PAYU,
+   "HDFC Bank" → HDFC. Oldest on the left, like a shelf fills up. */
+function employerSpine(company: string): string {
+  const acronym = /\(([A-Z]{2,})\)/.exec(company)
+  return (acronym ? acronym[1] : company.split(/\s+/)[0]).toUpperCase()
+}
+const BINDERS = [...experience]
+  .reverse()
+  .slice(0, 3)
+  .map((job) => employerSpine(job.company))
+const BINDER_COLORS = ['#3d5a2e', '#274a68', '#8c2f26']
+/* the trophy is the Quarterly Ace (PayU) — only engraved if it is real */
+const TROPHY_PLATE = awards.some((a) => /Quarterly Ace/i.test(a.title))
+  ? 'QUARTERLY ACE'
+  : 'AWARD'
+
 function Shelf() {
+  const view = useSystem((s) => s.view)
   const books = useMemo(() => buildBooks(), [])
+  const spineTex = useMemo(
+    () => BINDERS.map((t) => makeLabel(t, '#1a1812', '#eceadf', 4, 3)),
+    [],
+  )
+  const plateTex = useMemo(
+    () => makeLabel(TROPHY_PLATE, P.amber, '#1a1812', 4, 3),
+    [],
+  )
   useEffect(
     () => () => {
       books.geometry.dispose()
       ;(books.material as MeshStandardMaterial).dispose()
+      spineTex.forEach((t) => t.dispose())
+      plateTex.dispose()
     },
-    [books],
+    [books, spineTex, plateTex],
   )
 
   return (
@@ -192,27 +269,42 @@ function Shelf() {
         </mesh>
       ))}
       <primitive object={books} position={[-0.31, 0.013, 0]} />
-      {/* two fat binders */}
-      <mesh position={[0.11, 0.098, -0.01]} rotation-y={0.04} castShadow>
-        <boxGeometry args={[0.052, 0.17, 0.15]} />
-        <meshStandardMaterial color="#8c2f26" roughness={0.85} />
-      </mesh>
-      <mesh position={[0.168, 0.098, 0]} castShadow>
-        <boxGeometry args={[0.052, 0.17, 0.15]} />
-        <meshStandardMaterial color="#274a68" roughness={0.85} />
-      </mesh>
-      {/* label strips on binder spines */}
-      {[0.11, 0.168].map((x) => (
-        <mesh key={x} position={[x, 0.12, 0.076]}>
-          <planeGeometry args={[0.032, 0.05]} />
-          <meshStandardMaterial color="#eceadf" roughness={0.9} />
-        </mesh>
-      ))}
-      {/* tiny amber trophy */}
+      {/* three fat binders — one per employer (E-5) */}
+      <Clickable
+        enabled={view === 'room'}
+        label="three employers, one shelf"
+        onActivate={() => playClick()}
+      >
+        {BINDERS.map((name, i) => {
+          const x = 0.09 + i * 0.058
+          return (
+            <group key={name} position={[x, 0.098, -0.005]} rotation-y={i === 0 ? 0.04 : 0}>
+              <mesh castShadow>
+                <boxGeometry args={[0.052, 0.17, 0.15]} />
+                <meshStandardMaterial color={BINDER_COLORS[i]} roughness={0.85} />
+              </mesh>
+              {/* spine label, reading top to bottom */}
+              <mesh position={[0, 0.02, 0.0755]} rotation-z={-Math.PI / 2}>
+                <planeGeometry args={[0.096, 0.036]} />
+                <meshStandardMaterial map={spineTex[i]} roughness={0.9} />
+              </mesh>
+            </group>
+          )
+        })}
+      </Clickable>
+      {/* tiny amber trophy, engraved */}
       <group position={[0.28, 0.013, 0.02]}>
         <mesh castShadow>
           <boxGeometry args={[0.045, 0.018, 0.045]} />
           <meshStandardMaterial color="#2e2a26" roughness={0.6} />
+        </mesh>
+        <mesh position={[0, -0.001, 0.0226]}>
+          <planeGeometry args={[0.038, 0.0085]} />
+          <meshStandardMaterial
+            map={plateTex}
+            metalness={0.6}
+            roughness={0.4}
+          />
         </mesh>
         <mesh position={[0, 0.028, 0]}>
           <cylinderGeometry args={[0.006, 0.009, 0.03, 8]} />
@@ -302,6 +394,7 @@ function Chair() {
         label="quality assurance seat"
         onActivate={() => {
           spin.current.target += Math.PI * 2 * (Math.random() < 0.3 ? -1 : 1)
+          useWorld.getState().mark('chair')
           playClick()
         }}
       >

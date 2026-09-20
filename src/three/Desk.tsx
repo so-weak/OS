@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
+import { ContactShadows } from '@react-three/drei'
 import {
   CatmullRomCurve3,
   TubeGeometry,
@@ -8,12 +9,20 @@ import {
   type Mesh,
   type MeshBasicMaterial,
 } from 'three'
+import { identity } from '../data/resume'
 import { useSystem } from '../os/store'
 import { playClick } from '../os/sound'
 import Clickable from './Clickable'
+import Halo from './Halo'
 import Mouse from './Mouse'
 import { DESK, DESK_TOP, P } from './layout'
-import { makeSoftCircle, makeWood } from './textures'
+import {
+  disposeSurface,
+  makeLabelLines,
+  makeSoftCircle,
+  makeWoodMaps,
+  repeatSurface,
+} from './textures'
 
 /* =====================================================================
    The desk itself plus desk props: the live mouse + pad, a coffee mug
@@ -23,12 +32,13 @@ import { makeSoftCircle, makeWood } from './textures'
    ===================================================================== */
 
 export default function Desk() {
-  const woodTex = useMemo(() => {
-    const t = makeWood(P.deskWood, '#3d2a18', 9)
-    t.repeat.set(2, 1)
-    return t
-  }, [])
-  useEffect(() => () => woodTex.dispose(), [woodTex])
+  const gl = useThree((s) => s.gl)
+  const aniso = gl.capabilities.getMaxAnisotropy()
+  const wood = useMemo(
+    () => repeatSurface(makeWoodMaps(P.deskWood, '#3d2a18', 9, aniso), 2, 1),
+    [aniso],
+  )
+  useEffect(() => () => disposeSurface(wood), [wood])
 
   const legX = DESK.w / 2 - 0.06
   const legY = (DESK_TOP - DESK.thick) / 2
@@ -38,8 +48,27 @@ export default function Desk() {
       {/* top */}
       <mesh position={[0, DESK_TOP - DESK.thick / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={[DESK.w, DESK.thick, DESK.d]} />
-        <meshStandardMaterial map={woodTex} roughness={0.75} />
+        <meshStandardMaterial
+          map={wood.map}
+          bumpMap={wood.bumpMap}
+          bumpScale={0.002}
+          roughnessMap={wood.roughnessMap}
+          roughness={0.85}
+        />
       </mesh>
+      {/* contact darkening under the desk props (monitor base, keyboard,
+          mouse pad, mug, papers). Baked once — frames=1, never Infinity
+          (agreed in review); renderOrder -1 keeps it under the paper. */}
+      <ContactShadows
+        frames={1}
+        position={[0, DESK_TOP + 0.0005, 0]}
+        scale={[DESK.w, DESK.d]}
+        resolution={512}
+        blur={1.6}
+        far={0.45}
+        opacity={0.5}
+        renderOrder={-1}
+      />
       {/* side panels */}
       {[-legX, legX].map((x) => (
         <mesh key={x} position={[x, legY, 0]} castShadow>
@@ -55,6 +84,50 @@ export default function Desk() {
 
       <Mouse />
       <Mug />
+      <Nameplate />
+    </group>
+  )
+}
+
+/* ---------- brass nameplate at the front edge (U-P3) ---------- */
+const NAME_TITLE = 'AI / ML ENGINEER' // identity.title, abbreviated to fit
+
+function Nameplate() {
+  const tex = useMemo(
+    () =>
+      makeLabelLines(
+        [identity.name.toUpperCase(), NAME_TITLE],
+        '#2a1c08',
+        '#d4ad55',
+        4,
+        6,
+        3.6,
+      ),
+    [],
+  )
+  useEffect(() => () => tex.dispose(), [tex])
+
+  /* desk-local: front edge inside the lamp's pool, between the paperwork
+     and the keyboard, so it reads at night too (the right side is dark) */
+  return (
+    <group position={[-0.33, DESK_TOP, 0.28]} rotation-y={0.1}>
+      {/* base bar */}
+      <mesh position={[0, 0.004, 0]} castShadow>
+        <boxGeometry args={[0.2, 0.008, 0.032]} />
+        <meshStandardMaterial color="#8a6a2c" metalness={0.85} roughness={0.32} />
+      </mesh>
+      {/* the plate, hinged at its foot and leaning back */}
+      <group position={[0, 0.008, -0.006]} rotation-x={-0.42}>
+        <mesh position={[0, 0.0275, 0]} castShadow>
+          <boxGeometry args={[0.2, 0.055, 0.004]} />
+          <meshStandardMaterial color="#b8913f" metalness={0.85} roughness={0.28} />
+        </mesh>
+        {/* enamelled face, not bare metal, so the fill light reads it */}
+        <mesh position={[0, 0.0275, 0.0021]}>
+          <planeGeometry args={[0.19, 0.0528]} />
+          <meshStandardMaterial map={tex} metalness={0.15} roughness={0.45} />
+        </mesh>
+      </group>
     </group>
   )
 }
@@ -241,6 +314,7 @@ function PowerStrip() {
           emissiveIntensity={0.9}
         />
       </mesh>
+      <Halo color={P.ledRed} size={0.06} intensity={0.35} position={[0.075, 0.03, 0]} />
     </group>
   )
 }

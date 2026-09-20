@@ -18,7 +18,7 @@ const tagStyle: CSSProperties = {
   zIndex: 45,
   pointerEvents: 'none',
   fontFamily: 'var(--font-label)',
-  fontSize: '9px',
+  fontSize: '8px',
   letterSpacing: '1px',
   textTransform: 'uppercase',
   whiteSpace: 'nowrap',

@@ -4,7 +4,6 @@ import {
   books,
   fullByline,
   genres,
-  hasSamples,
   readDate,
   selectBooks,
   SHELF_TABS,
@@ -346,12 +345,6 @@ export default function LibraryPage({ bookId }: { bookId: string | null }) {
           served as static files. Nothing on this page can add, edit or remove a volume;
           books arrive by commit, scanned in by ISBN.
         </p>
-        {hasSamples && (
-          <p className="sample">
-            Sample catalogue: titles and dates are real, but the ratings and notes still
-            carry placeholder text.
-          </p>
-        )}
       </footer>
     </div>
   )

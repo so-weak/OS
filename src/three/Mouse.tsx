@@ -1,9 +1,17 @@
-import { useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { useFrame, useThree } from '@react-three/fiber'
 import { RoundedBox } from '@react-three/drei'
 import { MathUtils, type Group } from 'three'
 import { useSystem } from '../os/store'
 import { DESK_TOP, P } from './layout'
+import { makeSoftCircle } from './textures'
+
+/** The mouse lives on render layer 1: the desk's baked ContactShadows
+    (a layer-0 ortho camera) must not freeze a blob at its rest position
+    while the live mouse glides away. The main camera and the lamp's
+    shadow camera enable layer 1 (Lamp.tsx); its own shadow travels with
+    it as a soft dark disc. */
+export const MOUSE_LAYER = 1
 
 /* =====================================================================
    The beige two-button mouse, alive on its pad: in room view it glides
@@ -18,6 +26,14 @@ const LIM_Z = 0.056
 export default function Mouse() {
   const body = useRef<Group>(null!)
   const prevX = useRef(0)
+  const camera = useThree((s) => s.camera)
+  const shadowTex = useMemo(() => makeSoftCircle(), [])
+  useEffect(() => () => shadowTex.dispose(), [shadowTex])
+
+  useLayoutEffect(() => {
+    camera.layers.enable(MOUSE_LAYER)
+    body.current.traverse((o) => o.layers.set(MOUSE_LAYER))
+  }, [camera])
 
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05)
@@ -58,6 +74,17 @@ export default function Mouse() {
 
       {/* two-button beige mouse */}
       <group ref={body} position={[0.01, 0.006, 0.015]} rotation-y={0.18}>
+        {/* its contact shadow, riding along underneath */}
+        <mesh position={[0, 0.0004, 0.004]} rotation-x={-Math.PI / 2} renderOrder={-1}>
+          <planeGeometry args={[0.09, 0.13]} />
+          <meshBasicMaterial
+            map={shadowTex}
+            color="#000000"
+            transparent
+            opacity={0.5}
+            depthWrite={false}
+          />
+        </mesh>
         <RoundedBox
           args={[0.06, 0.03, 0.1]}
           radius={0.013}

@@ -23,7 +23,9 @@ export const MON_POS = new Vector3(0.02, DESK_TOP, -0.7)
 /** Slight turn toward the room camera (radians). */
 export const MON_YAW = 0.09
 /** CRT glass centre in monitor-local space. */
-export const GLASS_LOCAL = new Vector3(0, 0.26, 0.148)
+/* Recessed 13 mm behind the bezel face (R-P4): the OS sits inside the
+   chamfered frame like a real tube, and screenCamPose follows. */
+export const GLASS_LOCAL = new Vector3(0, 0.26, 0.128)
 /** Bezel front plate spans this local rect (used by Monitor.tsx). */
 export const BEZEL = {
   halfW: 0.22,
@@ -33,6 +35,8 @@ export const BEZEL = {
   depth: 0.026,
   holeW: 0.362,
   holeH: 0.274,
+  /** chamfer on the frame's edges — hole widens by this toward the face */
+  bevel: 0.006,
 } as const
 
 const monEuler = new Euler(0, MON_YAW, 0)

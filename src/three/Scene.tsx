@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { Canvas } from '@react-three/fiber'
+import { PerformanceMonitor } from '@react-three/drei'
 import { CAM_FOV } from '../constants'
 import Bookcase from './Bookcase'
 import CameraRig from './CameraRig'
@@ -44,11 +46,13 @@ import { INTRO_CAM_POS, P } from './layout'
    ===================================================================== */
 
 export default function Scene() {
+  /* R-P10: cap pixel ratio at 1.5 and drop to 1 when frames stutter */
+  const [dpr, setDpr] = useState<number | [number, number]>([1, 1.5])
   return (
     <>
       <Canvas
-        shadows
-        dpr={[1, 2]}
+        shadows="percentage"
+        dpr={dpr}
         camera={{
           fov: CAM_FOV,
           near: 0.04,
@@ -61,6 +65,7 @@ export default function Scene() {
         style={{ position: 'fixed', inset: 0 }}
       >
         <color attach="background" args={[P.night]} />
+        <PerformanceMonitor onDecline={() => setDpr(1)} />
 
         {/* damps every shared light value first (priority -1) */}
         <WorldFrame />

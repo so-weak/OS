@@ -431,10 +431,11 @@
   border: none;
   background: none;
   font-family: var(--font-ui);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.25;
   color: var(--ink);
   text-align: center;
+  overflow-wrap: anywhere;
   cursor: pointer;
 }
 .prj-item:hover .prj-item-label,
@@ -1072,6 +1073,20 @@
   padding: 12px 14px 8px;
   overflow: auto;
 }
+/* text on the left, the launcher column on the right — the way a
+   period Welcome window laid out its "What's New" buttons */
+.wlc-cols {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.wlc-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
 .wlc-type {
   font-family: var(--font-term);
   font-size: 16px;
@@ -1097,19 +1112,21 @@
   color: var(--ink-soft);
 }
 .wlc-launchers {
-  display: flex;
-  gap: 8px;
-}
-.wlc-launch {
-  flex: 1;
+  flex: none;
+  width: 168px;
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 6px;
-  padding: 10px 4px 8px;
+}
+.wlc-launch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
   border: none;
   font-family: var(--font-ui);
   font-size: 16px;
+  text-align: left;
   color: var(--ink);
   background: var(--face);
   box-shadow: var(--bevel-out);
@@ -1117,6 +1134,7 @@
 }
 .wlc-launch:active {
   box-shadow: var(--bevel-in);
+  padding: 4px 7px 2px 9px;
 }
 .wlc-check {
   display: flex;
@@ -1129,12 +1147,17 @@
   flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   padding: 6px 14px 10px;
 }
 .wlc-hint {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  line-height: 1.1;
   color: var(--ink-soft);
 }
 .wlc-footer .btn {
+  flex: none;
   margin-left: auto;
 }

@@ -8,6 +8,9 @@ import { useWorld } from '../world'
    modules' stores.
    ===================================================================== */
 
+/** after this many debugging sessions the duck ascends (Duck.tsx, Terminal) */
+export const DUCK_GOLDEN_AT = 10
+
 interface EggsState {
   /** classic blue-screen overlay over the whole OS; any key dismisses */
   bsod: boolean
@@ -29,5 +32,19 @@ export const useEggs = create<EggsState>((set) => ({
   triggerBsod: () => set({ bsod: true }),
   dismissBsod: () => set({ bsod: false }),
   toggleHacker: () => set((s) => ({ hacker: !s.hacker })),
-  clickDuck: () => set({ duckClicks: useWorld.getState().bumpDuck() }),
+  clickDuck: () => {
+    const world = useWorld.getState()
+    const n = world.bumpDuck()
+    if (n >= DUCK_GOLDEN_AT) world.mark('duck10')
+    set({ duckClicks: n })
+  },
 }))
+
+/* The world is the source of truth for the duck: when it forgets
+   (terminal `forget`) or rehydrates, the mirror follows and the duck
+   goes back to factory yellow. */
+useWorld.subscribe((w) => {
+  if (w.duckClicks !== useEggs.getState().duckClicks) {
+    useEggs.setState({ duckClicks: w.duckClicks })
+  }
+})

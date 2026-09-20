@@ -2,31 +2,47 @@ import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import type { Group } from 'three'
 import { useSystem } from '../os/store'
-import { useEggs } from '../os/eggs'
+import { DUCK_GOLDEN_AT, useEggs } from '../os/eggs'
 import { playBeep } from '../os/sound'
+import { LEDGER, useWorld } from '../world'
 import Clickable from './Clickable'
+import { useRoom } from './roomState'
 import { DESK_TOP, P } from './layout'
 
 /* =====================================================================
    The debugging duck, perched on top of the CRT. Clicking it squashes,
    hops and spins it on an underdamped spring (so it wobbles as it
    settles) and reports the click to the shared easter-egg store.
+
+   The click count lives in the world, so the duck keeps its colour
+   across visits — and once golden it starts whispering: its tooltip
+   carries one riddle from the ledger for something not yet found, and
+   every click turns the page.
    ===================================================================== */
 
 const BODY = '#f6c832'
 const BODY_DARK = '#dca81f'
-/** after 10 debugging sessions the duck ascends */
+/** after DUCK_GOLDEN_AT debugging sessions the duck ascends */
 const GOLD = '#ffe066'
 const GOLD_DARK = '#e6b93c'
-const GOLDEN_AT = 10
+
+/** What the tooltip says for this many clicks and this ledger. */
+function duckLabel(clicks: number, found: readonly string[]): string {
+  if (clicks < DUCK_GOLDEN_AT) return 'rubber duck debugger'
+  const left = LEDGER.filter((e) => !found.includes(e.id))
+  if (!left.length) return 'the golden debugger · nothing left to find'
+  return `the golden debugger · ${left[clicks % left.length].riddle}`
+}
 
 export default function Duck() {
   const view = useSystem((s) => s.view)
   const clickDuck = useEggs((s) => s.clickDuck)
   const clicks = useEggs((s) => s.duckClicks)
-  const golden = clicks >= GOLDEN_AT
+  const found = useWorld((s) => s.found)
+  const golden = clicks >= DUCK_GOLDEN_AT
   const body = golden ? GOLD : BODY
   const bodyDark = golden ? GOLD_DARK : BODY_DARK
+  const label = duckLabel(clicks, found)
 
   const rig = useRef<Group>(null!)
   const spin = useRef({ x: 0, v: 0, target: 0 })
@@ -60,14 +76,17 @@ export default function Duck() {
     <group position={[-0.11, DESK_TOP + 0.46, -0.69]}>
       <Clickable
         enabled={view === 'room'}
-        label={golden ? 'the golden debugger' : 'rubber duck debugger'}
+        label={label}
         onActivate={() => {
+          const n = clicks + 1
           // the 10th click earns a triple victory spin and a promotion
-          spin.current.target +=
-            clicks + 1 === GOLDEN_AT ? Math.PI * 6 : Math.PI * 2
+          spin.current.target += n === DUCK_GOLDEN_AT ? Math.PI * 6 : Math.PI * 2
           squash.current.v = -1.8
           playBeep()
-          clickDuck()
+          clickDuck() // the world counts it (and marks duck10 at 10)
+          // the label changes under the cursor; Clickable releases the
+          // old tag on re-render, so hand it the new riddle right away
+          useRoom.getState().setTooltip(duckLabel(n, useWorld.getState().found))
         }}
       >
         <group ref={rig} rotation-y={-0.5}>

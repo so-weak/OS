@@ -12,6 +12,7 @@ import {
 } from 'three'
 import { useSystem } from '../os/store'
 import { playBeep, playClick } from '../os/sound'
+import { useWorld } from '../world'
 import Clickable from './Clickable'
 import { DESK_TOP, P } from './layout'
 import { makeScoreboard, makeSoftCircle } from './textures'
@@ -141,6 +142,7 @@ function tossBall(game: Game, i: number): void {
 
 /** Three in a row: arm the bin dance, the sparks and a beep fanfare. */
 function celebrate(game: Game, sparkAttr: BufferAttribute): void {
+  useWorld.getState().mark('streak3')
   game.dance = 1
   game.sparkLife = 1
   for (let i = 0; i < SPARKS; i++) {

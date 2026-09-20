@@ -13,6 +13,22 @@ import {
   screenCamPose,
 } from './layout'
 import { useLibrary } from './libraryState'
+import { reducedMotion } from '../world'
+
+/* ---------- dev photo mode ----------
+   `window.__photo = { pos:[x,y,z], target:[x,y,z], fov? }` parks the
+   camera anywhere (no damping, no parallax) so close-ups of the props can
+   be checked; `window.__photo = null` gives the camera back. Dev builds
+   only — nothing here reaches production. */
+declare global {
+  interface Window {
+    __photo?: {
+      pos: [number, number, number]
+      target: [number, number, number]
+      fov?: number
+    } | null
+  }
+}
 
 /**
  * Drives the camera between the "room" pose and the "screen" pose using
@@ -37,10 +53,22 @@ export default function CameraRig() {
   /** the opening dolly: slow, like a camera settling on a tripod; any
       click (view change) or arrival ends it */
   const intro = useRef(true)
+  /** prefers-reduced-motion: the room holds still under the pointer */
+  const still = useRef(reducedMotion())
 
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05)
     const cam = state.camera as PerspectiveCamera
+    if (import.meta.env.DEV && window.__photo) {
+      const ph = window.__photo
+      cam.position.set(ph.pos[0], ph.pos[1], ph.pos[2])
+      cam.lookAt(ph.target[0], ph.target[1], ph.target[2])
+      if (ph.fov && Math.abs(cam.fov - ph.fov) > 0.01) {
+        cam.fov = ph.fov
+        cam.updateProjectionMatrix()
+      }
+      return
+    }
     const zoomedIn = view === 'zooming-in' || view === 'screen'
 
     // 'zooming-out' counts: the terminal's `library` command pulls back
@@ -55,7 +83,7 @@ export default function CameraRig() {
       const lib = libMix.current
       wantPos.current.lerpVectors(ROOM_CAM_POS, LIB_CAM_POS, lib)
       wantTgt.current.lerpVectors(ROOM_CAM_TARGET, LIB_CAM_TARGET, lib)
-      if (view === 'room') {
+      if (view === 'room' && !still.current) {
         // subtle parallax; never active while zooming or reading, and
         // eased right down at the shelf so spines stay readable
         const sway = 1 - lib * 0.7

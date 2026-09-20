@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import {
-  BoxGeometry,
   Color,
   InstancedMesh,
   MathUtils,
@@ -9,8 +8,11 @@ import {
   Object3D,
   type Mesh,
 } from 'three'
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { useSystem } from '../os/store'
 import { playBeep, playClick } from '../os/sound'
+import { useWorld } from '../world'
+import Halo from './Halo'
 import { useLibrary } from './libraryState'
 import { useRoom } from './roomState'
 import { DESK_TOP, P } from './layout'
@@ -144,8 +146,14 @@ function specTransform(
   dummy.updateMatrix()
 }
 
+/** Unit keycap with softened edges (R-P7); instances scale it per key,
+    so a 1u cap gets ~2.5 mm corners and the modifiers a touch more. */
+function keycapGeometry(): RoundedBoxGeometry {
+  return new RoundedBoxGeometry(1, 1, 1, 2, 0.1)
+}
+
 function buildKeys(specs: KeySpec[]): InstancedMesh {
-  const geo = new BoxGeometry(1, 1, 1)
+  const geo = keycapGeometry()
   const mat = new MeshStandardMaterial({ roughness: 0.62 })
   const mesh = new InstancedMesh(geo, mat, specs.length)
   const dummy = new Object3D()
@@ -191,6 +199,13 @@ export default function Keyboard() {
   const active = useRef(new Set<number>())
   const space = useRef({ p: 0, t: 0 })
   const spaceMesh = useRef<Mesh>(null!)
+  /* the spacebar gets its own radius: a unit cap stretched 6× would
+     round into a pill */
+  const spaceGeo = useMemo(
+    () => new RoundedBoxGeometry(0.148, CAP_H, CAP, 2, 0.0022),
+    [],
+  )
+  useEffect(() => () => spaceGeo.dispose(), [spaceGeo])
   const typed = useRef('')
   const dummy = useMemo(() => new Object3D(), [])
 
@@ -214,7 +229,11 @@ export default function Keyboard() {
         typed.current = (typed.current + e.key.toLowerCase()).slice(-6)
         if (typed.current.endsWith('hire')) {
           typed.current = ''
+          // the sticky note glows, the ledger notes it, and the machine
+          // boots straight into Contact (the OS side handles the rest)
           useRoom.getState().pingHire()
+          useWorld.getState().mark('hire')
+          useSystem.getState().powerOnForHire()
           playBeep()
         }
       }
@@ -288,24 +307,32 @@ export default function Keyboard() {
         {/* spacebar */}
         <mesh
           ref={spaceMesh}
+          geometry={spaceGeo}
           position={[0, CAP_H / 2 + 0.001, zSpace]}
           castShadow
         >
-          <boxGeometry args={[0.148, CAP_H, CAP]} />
           <meshStandardMaterial color="#e9e5d8" roughness={0.62} />
         </mesh>
       </group>
 
       {/* lock LEDs, lit while the machine runs */}
       {[0.155, 0.175, 0.195].map((x) => (
-        <mesh key={x} position={[x, 0.0125, -BOARD_D / 2 + 0.009]}>
-          <boxGeometry args={[0.007, 0.002, 0.004]} />
-          <meshStandardMaterial
-            color="#1c2f14"
-            emissive={P.ledGreen}
-            emissiveIntensity={powered ? 1.1 : 0}
+        <group key={x} position={[x, 0.0125, -BOARD_D / 2 + 0.009]}>
+          <mesh>
+            <boxGeometry args={[0.007, 0.002, 0.004]} />
+            <meshStandardMaterial
+              color="#1c2f14"
+              emissive={P.ledGreen}
+              emissiveIntensity={powered ? 1.1 : 0}
+            />
+          </mesh>
+          <Halo
+            color={P.ledGreen}
+            size={0.022}
+            intensity={powered ? 0.45 : 0}
+            position={[0, 0.003, 0]}
           />
-        </mesh>
+        </group>
       ))}
     </group>
   )

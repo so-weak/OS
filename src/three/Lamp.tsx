@@ -1,7 +1,8 @@
-import { useMemo, useRef } from 'react'
+import { useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import {
-  MathUtils,
+  BackSide,
+  DoubleSide,
   Object3D,
   type MeshStandardMaterial,
   type PointLight,
@@ -9,8 +10,11 @@ import {
 } from 'three'
 import { useSystem } from '../os/store'
 import { playClick } from '../os/sound'
+import { useWorld } from '../world'
 import Clickable from './Clickable'
 import { DESK_TOP, P } from './layout'
+import { live } from './live'
+import { MOUSE_LAYER } from './Mouse'
 import { useRoom } from './roomState'
 
 /* =====================================================================
@@ -27,13 +31,12 @@ const HEAD: [number, number, number] = [0.305, 0.205, 0]
 
 export default function Lamp() {
   const view = useSystem((s) => s.view)
-  const lampOn = useRoom((s) => s.lampOn)
   const toggleLamp = useRoom((s) => s.toggleLamp)
 
   const spot = useRef<SpotLight>(null!)
   const spill = useRef<PointLight>(null!)
   const bulbMat = useRef<MeshStandardMaterial>(null!)
-  const level = useRef(1)
+  const innerMat = useRef<MeshStandardMaterial>(null!)
 
   const target = useMemo(() => {
     const o = new Object3D()
@@ -41,12 +44,19 @@ export default function Lamp() {
     return o
   }, [])
 
-  useFrame((_, delta) => {
-    const dt = Math.min(delta, 0.05)
-    level.current = MathUtils.damp(level.current, lampOn ? 1 : 0, 7, dt)
-    spot.current.intensity = level.current * 3.2
-    spill.current.intensity = level.current * 0.55
-    bulbMat.current.emissiveIntensity = level.current * 2.4
+  // the mouse sits on its own render layer (see Mouse.tsx); the lamp
+  // must still throw its shadow
+  useLayoutEffect(() => {
+    spot.current.shadow.camera.layers.enable(MOUSE_LAYER)
+  }, [])
+
+  useFrame(() => {
+    // live.lamp is damped once per frame in WorldFrame (≈0.3 s swell)
+    const level = live.lamp
+    spot.current.intensity = level * 3.2
+    spill.current.intensity = level * 0.55
+    bulbMat.current.emissiveIntensity = level * 2.4
+    innerMat.current.emissiveIntensity = level * 1.1
   })
 
   return (
@@ -56,6 +66,8 @@ export default function Lamp() {
         label="mood lighting"
         onActivate={() => {
           playClick()
+          // the ledger: switching the mood off is the secret
+          if (useRoom.getState().lampOn) useWorld.getState().mark('lamp')
           toggleLamp()
         }}
       >
@@ -107,6 +119,19 @@ export default function Lamp() {
               color="#245c48"
               roughness={0.45}
               metalness={0.25}
+              side={DoubleSide}
+            />
+          </mesh>
+          {/* the inside of the shade, lit warm by the bulb */}
+          <mesh scale={[0.97, 0.98, 0.97]}>
+            <cylinderGeometry args={[0.016, 0.052, 0.085, 14, 1, true]} />
+            <meshStandardMaterial
+              ref={innerMat}
+              color="#3a2c1e"
+              emissive={WARM}
+              emissiveIntensity={1.1}
+              roughness={0.55}
+              side={BackSide}
             />
           </mesh>
           <mesh position={[0, -0.028, 0]}>
@@ -135,8 +160,10 @@ export default function Lamp() {
         distance={3.2}
         decay={1.8}
         castShadow
-        shadow-mapSize={[512, 512]}
-        shadow-bias={-0.002}
+        shadow-mapSize={[1024, 1024]}
+        shadow-camera-near={0.05}
+        shadow-bias={-0.0004}
+        shadow-normalBias={0.02}
       />
       <pointLight
         ref={spill}

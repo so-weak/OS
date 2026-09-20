@@ -130,6 +130,8 @@ export default function Snake() {
       setNewHi(true)
       saveHi(s)
     }
+    // the street-cred certificate is a ledger entry too
+    if (s >= CRED_SCORE) useWorld.getState().mark('snake25')
     setPhase('gameover')
     playBeep()
     beepTimerRef.current = window.setTimeout(() => playBeep(), 140)

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { identity } from '../../data/resume'
+import { bengaluruClockLabel, useWorld } from '../../world'
 import { AppIcon } from '../icons/AppIcon'
 import { playBeep, playClick } from '../sound'
 import { MenuGag } from './shared'
@@ -12,6 +13,8 @@ import './apps.css'
    via mailto:. Footer buttons: copy address, LinkedIn, GitHub, WhatsApp,
    phone. To: is hard-wired to identity.email (readonly).
    ===================================================================== */
+
+const CITY = identity.location.split(',')[0].trim()
 
 const MODEM_STAGES = [
   'Picking up the handset…',
@@ -27,6 +30,9 @@ export default function Contact() {
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [stage, setStage] = useState<number | null>(null)
+  // the desk's clock, so the status bar can guess whether anyone is up
+  const hour = useWorld((s) => s.hour)
+  const awake = hour >= 7 && hour < 23
 
   const timers = useRef<number[]>([])
   useEffect(
@@ -174,7 +180,10 @@ export default function Contact() {
 
       <div className="app-status">
         <span>{stage !== null ? '56k: OFF-HOOK' : '56k: on-hook, ready'}</span>
-        <span className="fit">POP3: {identity.location}</span>
+        <span className="fit">
+          {CITY} · {bengaluruClockLabel(hour)} IST · probably{' '}
+          {awake ? 'awake' : 'asleep'}
+        </span>
       </div>
 
       {stage !== null && (

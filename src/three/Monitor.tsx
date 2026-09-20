@@ -2,20 +2,32 @@ import { Suspense, useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Html } from '@react-three/drei'
 import {
+  AdditiveBlending,
+  CustomBlending,
+  ExtrudeGeometry,
   MathUtils,
+  MeshPhysicalMaterial,
+  OneFactor,
+  OneMinusSrcAlphaFactor,
+  Path,
+  Shape,
   type Group,
+  type Mesh,
   type MeshBasicMaterial,
   type MeshStandardMaterial,
   type PointLight,
+  type SpriteMaterial,
 } from 'three'
 import { GLASS_H, GLASS_W, HTML_SCALE, SCREEN_H, SCREEN_W } from '../constants'
 import { useSystem } from '../os/store'
 import { playBeep, playClick } from '../os/sound'
 import SoubhikOS from '../os/SoubhikOS'
+import { useWorld } from '../world'
 import Clickable from './Clickable'
+import Halo from './Halo'
 import { BEZEL, GLASS_LOCAL, MON_POS, MON_YAW, P } from './layout'
 import { KNOB_LEVELS, useRoom } from './roomState'
-import { makeLabel, makeStickyNote } from './textures'
+import { makeFeatheredRect, makeLabel, makeStickyNote } from './textures'
 
 /* =====================================================================
    The CRT monitor. A thick beige bezel frames the glass; the OS itself
@@ -28,14 +40,77 @@ import { makeLabel, makeStickyNote } from './textures'
    someone types "hire" on the room keyboard.
    ===================================================================== */
 
-/* Bezel frame strips derived from the shared layout contract. */
+/* Bezel frame dimensions derived from the shared layout contract. */
 const PLATE_W = BEZEL.halfW * 2
 const HOLE_CY = GLASS_LOCAL.y
-const TOP_H = BEZEL.top - (HOLE_CY + BEZEL.holeH / 2)
 const BOT_H = HOLE_CY - BEZEL.holeH / 2 - BEZEL.bottom
-const SIDE_W = (PLATE_W - BEZEL.holeW) / 2
 const PLATE_FRONT = BEZEL.frontZ + BEZEL.depth / 2 // local z of bezel face
 const KNOB_Y = BEZEL.bottom + BOT_H / 2
+
+/** The bezel as ONE chamfered frame: a rectangle with a hole, extruded
+    with a bevel. ExtrudeGeometry's bevel grows the body and shrinks the
+    hole in the mid-section, so the hole is widest at the face and
+    narrows toward the recessed glass — a real tube surround. */
+function buildBezel(): ExtrudeGeometry {
+  const b = BEZEL.bevel
+  const shape = new Shape()
+  const hw = BEZEL.halfW - b
+  shape.moveTo(-hw, BEZEL.bottom + b)
+  shape.lineTo(hw, BEZEL.bottom + b)
+  shape.lineTo(hw, BEZEL.top - b)
+  shape.lineTo(-hw, BEZEL.top - b)
+  shape.closePath()
+  const hole = new Path()
+  const hx = BEZEL.holeW / 2 + b
+  const hy = BEZEL.holeH / 2 + b
+  hole.moveTo(-hx, HOLE_CY - hy)
+  hole.lineTo(-hx, HOLE_CY + hy)
+  hole.lineTo(hx, HOLE_CY + hy)
+  hole.lineTo(hx, HOLE_CY - hy)
+  hole.closePath()
+  shape.holes.push(hole)
+  const depth = BEZEL.depth - 2 * b
+  const geo = new ExtrudeGeometry(shape, {
+    depth,
+    bevelEnabled: true,
+    bevelThickness: b,
+    bevelSize: b,
+    bevelOffset: 0,
+    bevelSegments: 2,
+    curveSegments: 1,
+  })
+  // the extrusion spans z ∈ [-b, depth + b]; put its face at PLATE_FRONT
+  geo.translate(0, 0, PLATE_FRONT - depth - b)
+  return geo
+}
+
+/** Reflection-only glass over the OS (R-P4c): black physical material
+    whose env reflection is ADDED to the frame, alpha = brightest channel
+    so it survives the DOM alpha hole. Room view only — reading is sacred. */
+function buildGlass(): MeshPhysicalMaterial {
+  const m = new MeshPhysicalMaterial({
+    color: '#000000',
+    roughness: 0.06,
+    metalness: 0,
+    clearcoat: 1,
+    clearcoatRoughness: 0.08,
+    transparent: true,
+    depthWrite: false,
+    envMapIntensity: 0.25,
+  })
+  m.blending = CustomBlending
+  m.blendSrc = OneFactor
+  m.blendDst = OneFactor
+  m.blendSrcAlpha = OneFactor
+  m.blendDstAlpha = OneMinusSrcAlphaFactor
+  m.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <dithering_fragment>',
+      '#include <dithering_fragment>\n\tgl_FragColor.a = max(gl_FragColor.r, max(gl_FragColor.g, gl_FragColor.b));',
+    )
+  }
+  return m
+}
 
 export default function Monitor() {
   const view = useSystem((s) => s.view)
@@ -57,17 +132,41 @@ export default function Monitor() {
   const contrastIdx = useRoom((s) => s.contrastIdx)
   const cycleBright = useRoom((s) => s.cycleBright)
   const cycleContrast = useRoom((s) => s.cycleContrast)
+  const muted = useSystem((s) => s.muted)
+  /* the ledger: both tube knobs turned at least once */
+  const turned = useRef({ bright: false, contrast: false })
+  const noteTurn = (which: 'bright' | 'contrast') => {
+    turned.current[which] = true
+    if (turned.current.bright && turned.current.contrast)
+      useWorld.getState().mark('knobs')
+  }
 
   const glowMat = useRef<MeshBasicMaterial>(null!)
   const glowLight = useRef<PointLight>(null!)
   const ledMat = useRef<MeshStandardMaterial>(null!)
+  const ledHalo = useRef<SpriteMaterial>(null!)
+  const glass = useRef<Mesh>(null!)
   const level = useRef(0)
+  /** 1 in room view, eased to 0 while zooming/reading — the bleed sits
+      in front of the bezel, so it must never veil the OS while reading */
+  const roomMix = useRef(1)
 
   const brandTex = useMemo(
     () => makeLabel('SOUBHIK SYNTHVISION 17', P.plasticDark, null, 4, 2),
     [],
   )
-  useEffect(() => () => brandTex.dispose(), [brandTex])
+  const bleedTex = useMemo(() => makeFeatheredRect(128, 96, 0.34), [])
+  const bezelGeo = useMemo(() => buildBezel(), [])
+  const glassMat = useMemo(() => buildGlass(), [])
+  useEffect(
+    () => () => {
+      brandTex.dispose()
+      bleedTex.dispose()
+      bezelGeo.dispose()
+      glassMat.dispose()
+    },
+    [brandTex, bleedTex, bezelGeo, glassMat],
+  )
 
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05)
@@ -77,8 +176,14 @@ export default function Monitor() {
     const knob = KNOB_LEVELS[useRoom.getState().brightIdx]
     const flicker =
       1 + Math.sin(t * 43.7) * 0.035 + Math.sin(t * 11.3) * 0.045
+    roomMix.current = MathUtils.damp(
+      roomMix.current,
+      useSystem.getState().view === 'room' ? 1 : 0,
+      8,
+      dt,
+    )
     glowMat.current.opacity =
-      level.current * 0.5 * flicker * (0.55 + 0.45 * knob)
+      level.current * 0.3 * flicker * (0.55 + 0.45 * knob) * roomMix.current
     glowLight.current.intensity =
       level.current * 1.6 * flicker * (0.55 + 0.45 * knob)
     ledMat.current.emissiveIntensity = MathUtils.damp(
@@ -87,6 +192,13 @@ export default function Monitor() {
       8,
       dt,
     )
+    ledHalo.current.opacity = ledMat.current.emissiveIntensity * 0.3
+    // the glass reflects the room's env explicitly, so its own intensity
+    // is honoured (three overrides envMapIntensity for scene-env users)
+    const gm = glass.current.material as MeshPhysicalMaterial
+    if (gm.envMap !== state.scene.environment)
+      gm.envMap = state.scene.environment
+    gm.envMapIntensity = 0.25 * state.scene.environmentIntensity
   })
 
   return (
@@ -99,23 +211,41 @@ export default function Monitor() {
           powerOn()
         }}
       >
-        <MonitorShell brandTex={brandTex} ledMat={ledMat} />
+        <MonitorShell
+          brandTex={brandTex}
+          bezelGeo={bezelGeo}
+          ledMat={ledMat}
+          ledHalo={ledHalo}
+        />
       </Clickable>
 
       <StickyNote />
 
-      {/* brightness / contrast knobs — they actually work */}
+      {/* volume / brightness / contrast knobs — they actually work.
+          Volume has two detents (muted / not) and IS the mute control. */}
+      <Knob
+        x={0.122}
+        idx={muted ? 0 : 4}
+        label={muted ? 'volume (muted)' : 'volume'}
+        onCycle={() => useSystem.getState().toggleMuted()}
+      />
       <Knob
         x={0.15}
         idx={brightIdx}
         label="brightness"
-        onCycle={cycleBright}
+        onCycle={() => {
+          noteTurn('bright')
+          cycleBright()
+        }}
       />
       <Knob
         x={0.178}
         idx={contrastIdx}
         label="contrast"
-        onCycle={cycleContrast}
+        onCycle={() => {
+          noteTurn('contrast')
+          cycleContrast()
+        }}
       />
 
       {/* tube face — dark glass filling the bezel hole */}
@@ -124,17 +254,34 @@ export default function Monitor() {
         <meshStandardMaterial color="#090c0b" roughness={0.35} />
       </mesh>
 
-      {/* phosphor bleed — a whisker larger than the glass so a lit rim
-          halos around the OS while powered */}
-      <mesh position={[0, HOLE_CY, GLASS_LOCAL.z - 0.0005]}>
-        <planeGeometry args={[GLASS_W + 0.012, GLASS_H + 0.012]} />
+      {/* phosphor bleed — a feathered additive veil just proud of the
+          bezel, so the lit tube blooms softly onto the plastic around it
+          while powered. Room view only (roomMix); the lifted paper
+          (renderOrder 50, no depth test) still paints over it. */}
+      <mesh position={[0, HOLE_CY, PLATE_FRONT + 0.004]} renderOrder={4}>
+        <planeGeometry args={[BEZEL.holeW + 0.08, BEZEL.holeH + 0.08]} />
         <meshBasicMaterial
           ref={glowMat}
+          map={bleedTex}
           color={P.screenGlow}
           transparent
           opacity={0}
+          blending={AdditiveBlending}
+          depthWrite={false}
           toneMapped={false}
         />
+      </mesh>
+
+      {/* the glass itself: reflections of the lamp and window slide across
+          the tube with the camera; hidden the moment you lean in */}
+      <mesh
+        ref={glass}
+        position={[0, HOLE_CY, GLASS_LOCAL.z + 0.0035]}
+        material={glassMat}
+        renderOrder={10}
+        visible={view === 'room'}
+      >
+        <planeGeometry args={[GLASS_W, GLASS_H]} />
       </mesh>
 
       {/* screen light spilling onto the keyboard and desk */}
@@ -293,10 +440,14 @@ function StickyNote() {
 /* ---------- passive shell geometry ---------- */
 function MonitorShell({
   brandTex,
+  bezelGeo,
   ledMat,
+  ledHalo,
 }: {
   brandTex: ReturnType<typeof makeLabel>
+  bezelGeo: ExtrudeGeometry
   ledMat: React.RefObject<MeshStandardMaterial>
+  ledHalo: React.RefObject<SpriteMaterial>
 }) {
   return (
     <group>
@@ -328,35 +479,9 @@ function MonitorShell({
         </mesh>
       ))}
 
-      {/* bezel frame — four strips around the glass hole */}
-      <mesh
-        position={[0, BEZEL.top - TOP_H / 2, BEZEL.frontZ]}
-        castShadow
-      >
-        <boxGeometry args={[PLATE_W, TOP_H, BEZEL.depth]} />
+      {/* bezel — one chamfered frame around the recessed glass */}
+      <mesh geometry={bezelGeo} castShadow>
         <meshStandardMaterial color={P.chassis} roughness={0.7} />
-      </mesh>
-      <mesh position={[0, BEZEL.bottom + BOT_H / 2, BEZEL.frontZ]}>
-        <boxGeometry args={[PLATE_W, BOT_H, BEZEL.depth]} />
-        <meshStandardMaterial color={P.chassis} roughness={0.7} />
-      </mesh>
-      {[-1, 1].map((s) => (
-        <mesh
-          key={s}
-          position={[
-            s * (BEZEL.holeW / 2 + SIDE_W / 2),
-            HOLE_CY,
-            BEZEL.frontZ,
-          ]}
-        >
-          <boxGeometry args={[SIDE_W, BEZEL.holeH, BEZEL.depth]} />
-          <meshStandardMaterial color={P.chassis} roughness={0.7} />
-        </mesh>
-      ))}
-      {/* darker inner lip around the tube */}
-      <mesh position={[0, HOLE_CY, BEZEL.frontZ - 0.004]}>
-        <boxGeometry args={[BEZEL.holeW + 0.016, BEZEL.holeH + 0.016, 0.018]} />
-        <meshStandardMaterial color={P.chassisDarker} roughness={0.85} />
       </mesh>
 
       {/* etched brand plate */}
@@ -376,6 +501,13 @@ function MonitorShell({
           roughness={0.4}
         />
       </mesh>
+      <Halo
+        ref={ledHalo}
+        color={P.ledGreen}
+        size={0.026}
+        intensity={0}
+        position={[0.202, KNOB_Y, PLATE_FRONT + 0.004]}
+      />
     </group>
   )
 }

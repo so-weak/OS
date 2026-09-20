@@ -39,6 +39,7 @@ import {
 } from './libraryTextures'
 import { makeSoftCircle, makeWood } from './textures'
 import { useFontsReady } from '../useFontsReady'
+import { LEDGER, useWorld } from '../world'
 
 /* =====================================================================
    THE STACKS — the 3D library in the back-left corner.
@@ -336,13 +337,19 @@ function SwingGroup({ open, children }: { open: boolean; children: React.ReactNo
   )
 }
 
-/** What the case was hiding. */
+/** What the case was hiding. A dead end — until the ledger is full. */
 function SecretRecess({ open }: { open: boolean }) {
   const mat = useRef<Mesh>(null!)
+  const complete = useWorld((s) => LEDGER.every((e) => s.found.includes(e.id)))
   const strip = useMemo(
-    () => makeStrip('ACCESS PANEL — NICE TRY', { fg: '#0b1a0e', bg: '#33ff66', size: 34 }),
-    [],
+    () =>
+      makeStrip(
+        complete ? 'ACCESS GRANTED — YOU MISSED NOTHING' : 'ACCESS PANEL — NICE TRY',
+        { fg: '#0b1a0e', bg: '#33ff66', size: 34 },
+      ),
+    [complete],
   )
+  const stripW = complete ? 0.28 : 0.2
   useEffect(() => () => strip.tex.dispose(), [strip])
   useFrame((_, delta) => {
     const m = mat.current
@@ -357,7 +364,7 @@ function SecretRecess({ open }: { open: boolean }) {
         <meshBasicMaterial color="#0d3a20" transparent opacity={0} toneMapped={false} />
       </mesh>
       <mesh position={[0, -0.02, 0.002]}>
-        <planeGeometry args={[0.2, 0.2 / strip.aspect]} />
+        <planeGeometry args={[stripW, stripW / strip.aspect]} />
         <meshBasicMaterial map={strip.tex} transparent toneMapped={false} />
       </mesh>
       <pointLight position={[0, 0, 0.14]} color="#33ff66" intensity={open ? 0.5 : 0} distance={0.7} />
@@ -480,6 +487,7 @@ function SecretVolume() {
         label="…that is not a book"
         onActivate={() => {
           useLibrary.getState().toggleSecret()
+          useWorld.getState().mark('sys')
           playBeep()
         }}
       >

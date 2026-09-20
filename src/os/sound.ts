@@ -241,3 +241,53 @@ export function playShutdown(): void {
     /* stay silent */
   }
 }
+
+/** Distant thunder, `delayMs` after the flash — the storm is a few km
+    off. Two seconds of low noise through a lowpass that sinks from
+    180 Hz to 60 Hz as the rumble rolls away. Peak gain 0.12 (agreed
+    cap). Silent until the first gesture: a suspended context would
+    queue every rumble and dump them all when it finally resumes. */
+export function playThunder(delayMs = 1500): void {
+  try {
+    if (throttled('thunder', 800)) return
+    const o = out()
+    if (!o) return
+    const { ac, bus } = o
+    if (ac.state !== 'running') return
+    const dur = 2
+    const t = ac.currentTime + Math.max(0, delayMs) / 1000
+
+    // brown-ish noise: a leaky integrator over white, so it rumbles
+    const buf = ac.createBuffer(1, Math.ceil(ac.sampleRate * dur), ac.sampleRate)
+    const d = buf.getChannelData(0)
+    let last = 0
+    for (let i = 0; i < d.length; i++) {
+      last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02
+      d[i] = last * 3.5
+    }
+    const src = ac.createBufferSource()
+    src.buffer = buf
+
+    const lp = ac.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.frequency.setValueAtTime(180, t)
+    lp.frequency.exponentialRampToValueAtTime(60, t + dur)
+    lp.Q.value = 0.9
+
+    // the crack, a second roll, then the long fade
+    const g = ac.createGain()
+    g.gain.setValueAtTime(0.0001, t)
+    g.gain.exponentialRampToValueAtTime(0.12, t + 0.12)
+    g.gain.exponentialRampToValueAtTime(0.045, t + 0.55)
+    g.gain.exponentialRampToValueAtTime(0.09, t + 0.8)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+
+    src.connect(lp)
+    lp.connect(g)
+    g.connect(bus)
+    src.start(t)
+    src.stop(t + dur + 0.05)
+  } catch {
+    /* stay silent */
+  }
+}

@@ -5,13 +5,17 @@ import {
   type Group,
   type MeshBasicMaterial,
   type MeshStandardMaterial,
+  type SpriteMaterial,
 } from 'three'
+import { certifications } from '../data/resume'
 import { useSystem } from '../os/store'
 import { playClick } from '../os/sound'
+import { useWorld } from '../world'
 import Clickable from './Clickable'
+import Halo from './Halo'
 import { P, TOWER_POS, TOWER_SIZE, TOWER_YAW } from './layout'
 import { useRoom } from './roomState'
-import { makeLabel } from './textures'
+import { makeLabel, makeLabelLines } from './textures'
 
 /* =====================================================================
    The beige AT tower. Front panel: floppy drive (clickable — the disk
@@ -37,12 +41,22 @@ export default function Tower() {
     () => makeLabel('486 66', P.termGreen, '#071009', 6, 6),
     [],
   )
+  const floppyTex = useMemo(
+    () => makeLabelLines(['SOUBHIKOS 4.01', 'BOOT'], '#1a1812', '#eceadf', 4, 6, 1.75),
+    [],
+  )
+  const cdTex = useMemo(
+    () => makeLabel(CD_LABEL, '#1a1812', '#eceadf', 4, 3),
+    [],
+  )
   useEffect(
     () => () => {
       badgeTex.dispose()
       mhzTex.dispose()
+      floppyTex.dispose()
+      cdTex.dispose()
     },
-    [badgeTex, mhzTex],
+    [badgeTex, mhzTex, floppyTex, cdTex],
   )
 
   return (
@@ -90,13 +104,8 @@ export default function Tower() {
         </mesh>
       ))}
 
-      <FloppyDrive enabled={view === 'room'} />
-
-      {/* blank second bay */}
-      <mesh position={[0, 0.095, PANEL_FACE]}>
-        <boxGeometry args={[0.15, 0.042, 0.004]} />
-        <meshStandardMaterial color={P.chassisDark} roughness={0.8} />
-      </mesh>
+      <FloppyDrive enabled={view === 'room'} labelTex={floppyTex} />
+      <CdTray labelTex={cdTex} />
 
       <LedCluster mhzTex={mhzTex} />
       <PowerButton enabled={view === 'room'} onPower={powerOn} />
@@ -111,8 +120,56 @@ export default function Tower() {
   )
 }
 
+/* ---------- second bay: a CD-ROM drive, its disc labelled (E-5) ----------
+   The sticker is a real line from the resume — the shortest
+   certification, so it stays readable on a 4 cm tray. */
+const CD_LABEL = [...certifications]
+  .map((c) => c.replace(/\s*\(.*$/, '').toUpperCase())
+  .sort((a, b) => a.length - b.length)[0]
+
+function CdTray({ labelTex }: { labelTex: ReturnType<typeof makeLabel> }) {
+  return (
+    <group position={[0, 0.095, PANEL_FACE]}>
+      {/* bay plate */}
+      <mesh>
+        <boxGeometry args={[0.15, 0.042, 0.004]} />
+        <meshStandardMaterial color={P.chassisDark} roughness={0.8} />
+      </mesh>
+      {/* tray front, a hair proud of the bay */}
+      <mesh position={[-0.008, 0.006, 0.004]}>
+        <boxGeometry args={[0.118, 0.017, 0.005]} />
+        <meshStandardMaterial color={P.chassis} roughness={0.7} />
+      </mesh>
+      {/* the disc label showing through the tray's window */}
+      <mesh position={[-0.008, 0.006, 0.0066]}>
+        <planeGeometry args={[0.052, 0.0105]} />
+        <meshBasicMaterial map={labelTex} />
+      </mesh>
+      {/* seam under the tray, headphone jack, eject */}
+      <mesh position={[-0.008, -0.006, 0.0025]}>
+        <boxGeometry args={[0.118, 0.0015, 0.001]} />
+        <meshStandardMaterial color="#101012" roughness={0.9} />
+      </mesh>
+      <mesh position={[-0.055, -0.012, 0.0035]} rotation-x={Math.PI / 2}>
+        <cylinderGeometry args={[0.003, 0.003, 0.003, 10]} />
+        <meshStandardMaterial color="#101012" roughness={0.9} />
+      </mesh>
+      <mesh position={[0.058, -0.012, 0.004]}>
+        <boxGeometry args={[0.014, 0.006, 0.005]} />
+        <meshStandardMaterial color={P.chassis} roughness={0.7} />
+      </mesh>
+    </group>
+  )
+}
+
 /* ---------- floppy drive + springy disk (easter egg) ---------- */
-function FloppyDrive({ enabled }: { enabled: boolean }) {
+function FloppyDrive({
+  enabled,
+  labelTex,
+}: {
+  enabled: boolean
+  labelTex: ReturnType<typeof makeLabel>
+}) {
   const powered = useSystem((s) => s.power !== 'off')
   const floppyOut = useRoom((s) => s.floppyOut)
   const toggleFloppy = useRoom((s) => s.toggleFloppy)
@@ -120,6 +177,7 @@ function FloppyDrive({ enabled }: { enabled: boolean }) {
   const disk = useRef<Group>(null!)
   const spring = useRef({ z: 0.012, v: 0 })
   const driveLed = useRef<MeshStandardMaterial>(null!)
+  const driveHalo = useRef<SpriteMaterial>(null!)
 
   useFrame((_, delta) => {
     const dt = Math.min(delta, 0.05)
@@ -136,6 +194,7 @@ function FloppyDrive({ enabled }: { enabled: boolean }) {
       8,
       dt,
     )
+    driveHalo.current.opacity = driveLed.current.emissiveIntensity * 0.3
   })
 
   return (
@@ -144,6 +203,7 @@ function FloppyDrive({ enabled }: { enabled: boolean }) {
       label="the a: drive"
       onActivate={() => {
         playClick()
+        if (!useRoom.getState().floppyOut) useWorld.getState().mark('floppy')
         toggleFloppy()
       }}
     >
@@ -172,10 +232,14 @@ function FloppyDrive({ enabled }: { enabled: boolean }) {
             roughness={0.35}
           />
         </mesh>
-        {/* label */}
+        {/* label: the boot disk */}
         <mesh position={[-0.01, 0.0042, 0.026]}>
           <boxGeometry args={[0.06, 0.0008, 0.036]} />
           <meshStandardMaterial color="#eceadf" roughness={0.95} />
+        </mesh>
+        <mesh position={[-0.01, 0.0047, 0.026]} rotation-x={-Math.PI / 2}>
+          <planeGeometry args={[0.056, 0.032]} />
+          <meshStandardMaterial map={labelTex} roughness={0.95} />
         </mesh>
       </group>
       {/* eject button */}
@@ -193,6 +257,13 @@ function FloppyDrive({ enabled }: { enabled: boolean }) {
           emissiveIntensity={0}
         />
       </mesh>
+      <Halo
+        ref={driveHalo}
+        color={P.ledGreen}
+        size={0.024}
+        intensity={0}
+        position={[-0.058, 0.152, PANEL_FACE + 0.006]}
+      />
     </Clickable>
   )
 }
@@ -201,6 +272,8 @@ function FloppyDrive({ enabled }: { enabled: boolean }) {
 function LedCluster({ mhzTex }: { mhzTex: ReturnType<typeof makeLabel> }) {
   const powerLed = useRef<MeshStandardMaterial>(null!)
   const hddLed = useRef<MeshStandardMaterial>(null!)
+  const powerHalo = useRef<SpriteMaterial>(null!)
+  const hddHalo = useRef<SpriteMaterial>(null!)
   const mhzMat = useRef<MeshBasicMaterial>(null!)
 
   useFrame((state, delta) => {
@@ -210,6 +283,7 @@ function LedCluster({ mhzTex }: { mhzTex: ReturnType<typeof makeLabel> }) {
 
     if (powered) {
       powerLed.current.emissive.set(P.ledGreen)
+      powerHalo.current.color.set(P.ledGreen)
       powerLed.current.emissiveIntensity = 1.8
       // pseudo-random disk chatter
       const n = Math.sin(Math.floor(t * 12.7) * 947.31) * 0.5 + 0.5
@@ -217,10 +291,13 @@ function LedCluster({ mhzTex }: { mhzTex: ReturnType<typeof makeLabel> }) {
     } else {
       // standby heartbeat — the blink that keeps the dark room alive
       powerLed.current.emissive.set(P.amber)
+      powerHalo.current.color.set(P.amber)
       powerLed.current.emissiveIntensity =
         0.25 + Math.max(0, Math.sin(t * 2.1)) ** 6 * 1.3
       hddLed.current.emissiveIntensity = 0
     }
+    powerHalo.current.opacity = powerLed.current.emissiveIntensity * 0.28
+    hddHalo.current.opacity = hddLed.current.emissiveIntensity * 0.28
     mhzMat.current.opacity = MathUtils.damp(
       mhzMat.current.opacity,
       powered ? 1 : 0.08,
@@ -250,6 +327,20 @@ function LedCluster({ mhzTex }: { mhzTex: ReturnType<typeof makeLabel> }) {
           emissiveIntensity={0}
         />
       </mesh>
+      <Halo
+        ref={powerHalo}
+        color={P.amber}
+        size={0.03}
+        intensity={0.1}
+        position={[-0.07, 0, PANEL_FACE + 0.004]}
+      />
+      <Halo
+        ref={hddHalo}
+        color={P.ledRed}
+        size={0.026}
+        intensity={0}
+        position={[-0.045, 0, PANEL_FACE + 0.004]}
+      />
       {/* recessed MHz readout */}
       <mesh position={[0.045, 0, PANEL_FACE - 0.001]}>
         <boxGeometry args={[0.062, 0.02, 0.004]} />

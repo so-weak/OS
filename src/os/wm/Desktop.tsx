@@ -4,8 +4,9 @@ import type {
   MouseEvent as ReactMouseEvent,
 } from 'react'
 import { SCREEN_W } from '../../constants'
-import { useWindows } from '../store'
+import { useSystem, useWindows } from '../store'
 import { useEggs } from '../eggs'
+import { useWorld } from '../../world'
 import { apps } from '../registry'
 import { AppIcon } from '../icons/AppIcon'
 import { playClick, playBeep } from '../sound'
@@ -13,12 +14,14 @@ import { localPoint, clamp, DESKTOP_H } from './metrics'
 import OSWindow from './Window'
 import Taskbar from './Taskbar'
 import StartMenu from './StartMenu'
+import Screensaver from './Screensaver'
 import { AboutDialog, ShutdownDialog, NewFolderDialog } from './dialogs'
 
 /* =====================================================================
    The desktop: icon grid, windows, taskbar, start menu, context menu,
-   system dialogs, toasts — plus the konami listener and the once-per-
-   boot Welcome window.
+   system dialogs, toasts, the screensaver — plus the konami listener
+   and the once-per-boot Welcome window (or Contact, when the machine
+   was booted by typing "hire" on the room keyboard).
    ===================================================================== */
 
 type DialogKind = 'none' | 'about' | 'shutdown' | 'folder'
@@ -49,11 +52,27 @@ export default function Desktop() {
 
   /* ---------- once per boot: open the Welcome window ----------
      The timeout makes this StrictMode-proof: mount -> schedule,
-     fake unmount -> cancel, remount -> schedule -> fire once. */
+     fake unmount -> cancel, remount -> schedule -> fire once.
+     A "hire" boot opens Contact INSTEAD (never stacked on Welcome).
+     Keyed on hireBoot so that typing "hire" while the machine is
+     already running still lands in Contact, right now, and the flag
+     never lingers into a later boot. */
+  const hireBoot = useSystem((s) => s.hireBoot)
+  const greeted = useRef(false)
   useEffect(() => {
-    const t = setTimeout(() => useWindows.getState().openApp('welcome'), 500)
+    if (greeted.current && !hireBoot) return
+    const t = setTimeout(() => {
+      greeted.current = true
+      const sys = useSystem.getState()
+      if (sys.hireBoot) {
+        sys.clearHireBoot()
+        useWindows.getState().openApp('contact')
+      } else {
+        useWindows.getState().openApp('welcome')
+      }
+    }, 500)
     return () => clearTimeout(t)
-  }, [])
+  }, [hireBoot])
 
   /* ---------- konami code -> hacker mode ---------- */
   useEffect(() => {
@@ -67,6 +86,7 @@ export default function Desktop() {
           i = 0
           playBeep()
           useEggs.getState().toggleHacker()
+          useWorld.getState().mark('konami')
         }
       } else {
         i = k === KONAMI[0] ? 1 : 0
@@ -194,6 +214,9 @@ export default function Desktop() {
       )}
 
       {toast && <div className="os-toast">{toast}</div>}
+
+      {/* idle long enough and the logo goes looking for the corner */}
+      <Screensaver />
     </div>
   )
 }

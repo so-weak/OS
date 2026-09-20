@@ -6,11 +6,11 @@ import { useToast } from './useToast'
 import './apps.css'
 
 /* =====================================================================
-   Resume.pdf — embedded PDF with a proper toolbar. If the browser (or
-   the 3D-transformed CRT) refuses to render the PDF, <object> falls back
-   to a clean pane with a big download button. Because a PDF can also
-   "load" yet paint garbage under a CSS 3D transform, the status bar
-   offers a manual eject to the same fallback pane.
+   Resume.pdf — the pane that never fails comes first: a big download
+   button and an open-in-tab. The inline <object> preview is opt-in
+   from the status bar, because a PDF under a CSS 3D transform can
+   "load" and still paint garbage on this tube; if the browser refuses
+   it outright, <object> falls back to the same pane.
    ===================================================================== */
 
 function FallbackPane({ onOpenTab }: { onOpenTab: () => void }) {
@@ -21,8 +21,8 @@ function FallbackPane({ onOpenTab }: { onOpenTab: () => void }) {
         This CRT predates inline PDF viewers.
       </div>
       <div className="res-fallback-sub">
-        The built-in previewer couldn&apos;t render the document inside a
-        cathode-ray tube. The paper itself is fine — grab it below.
+        Previews scramble on a cathode-ray tube. The paper itself is fine —
+        grab it below, or open it in a tab of its own.
       </div>
       <a
         className="btn primary"
@@ -41,7 +41,7 @@ function FallbackPane({ onOpenTab }: { onOpenTab: () => void }) {
 
 export default function Resume() {
   const { toast, show } = useToast()
-  const [ejected, setEjected] = useState(false)
+  const [inline, setInline] = useState(false)
 
   const openTab = () => {
     window.open(identity.resumePdf, '_blank', 'noopener')
@@ -75,9 +75,7 @@ export default function Resume() {
       </div>
 
       <div className="res-frame-wrap">
-        {ejected ? (
-          <FallbackPane onOpenTab={openTab} />
-        ) : (
+        {inline ? (
           <object
             className="res-frame"
             data={`${identity.resumePdf}#toolbar=0&navpanes=0`}
@@ -86,6 +84,8 @@ export default function Resume() {
           >
             <FallbackPane onOpenTab={openTab} />
           </object>
+        ) : (
+          <FallbackPane onOpenTab={openTab} />
         )}
       </div>
 
@@ -96,15 +96,17 @@ export default function Resume() {
           className="res-eject fit"
           onClick={() => {
             playClick()
-            setEjected((e) => !e)
+            setInline((v) => !v)
             show(
-              ejected
-                ? 'Re-inserting the paper into the tube…'
-                : 'Preview ejected. The download button never fails.',
+              inline
+                ? 'Preview ejected. The download button never fails.'
+                : 'Feeding the paper into the tube… it may scramble.',
             )
           }}
         >
-          {ejected ? 'retry preview' : 'preview scrambled? click to eject'}
+          {inline
+            ? 'preview scrambled? click to eject'
+            : 'try the inline preview (may scramble on this tube)'}
         </button>
       </div>
 

@@ -11,15 +11,23 @@ import {
 import { useSystem } from '../os/store'
 import { playClick } from '../os/sound'
 import { projects } from '../data/resume'
+import { LEDGER, useWorld } from '../world'
 import Clickable from './Clickable'
 import { DESK, DESK_TOP, P } from './layout'
-import { makeLabel } from './textures'
+import {
+  drawPixelText,
+  finish,
+  makeCanvas,
+  makeLabel,
+  pixelTextWidth,
+} from './textures'
 
 /* =====================================================================
    The desk pedestal: two drawers that actually slide open.
    Top drawer — the project archive: floppies labelled with REAL project
    names from resume.ts. Bottom drawer — the Silver Star badge on its
-   ribbon, and an envelope of "secrets" that only says NICE TRY!
+   ribbon, and an envelope of "secrets" that only says NICE TRY! — until
+   the ledger in src/world.ts is complete, when the note relents.
    ===================================================================== */
 
 const PED = { w: 0.42, d: 0.5, h: DESK_TOP - DESK.thick } as const
@@ -54,6 +62,40 @@ function starGeometry(): ExtrudeGeometry {
   return new ExtrudeGeometry(shape, { depth: 0.005, bevelEnabled: false })
 }
 
+/** The note in the envelope. Locked: NICE TRY!  Complete: OK. FINE. —
+    plus one smaller line in the owner's hand (pixel font, so only the
+    glyphs textures.ts knows: A–Z, digits, . ! - _ : > /). */
+function makeEnvelopeNote(complete: boolean): CanvasTexture {
+  if (!complete) return makeLabel('NICE TRY!', '#1a1812', '#fdfcf7', 6, 10)
+  const big = 'OK. FINE.'
+  const small = ['THE DUCK SAID', 'YOU WOULD. - S.']
+  const BIG = 6
+  const SMALL = 4
+  const PAD = 10
+  const GAP = 8
+  const LEAD = 6
+  const bigW = pixelTextWidth(big) * BIG
+  const smallW = Math.max(...small.map((l) => pixelTextWidth(l) * SMALL))
+  const w = Math.max(bigW, smallW) + PAD * 2
+  const h = PAD + 5 * BIG + GAP + small.length * (5 * SMALL + LEAD) - LEAD + PAD
+  const ctx = makeCanvas(w, h)
+  ctx.fillStyle = '#fdfcf7'
+  ctx.fillRect(0, 0, w, h)
+  drawPixelText(ctx, big, Math.round((w - bigW) / 2), PAD, BIG, '#1a1812')
+  small.forEach((line, i) => {
+    const lw = pixelTextWidth(line) * SMALL
+    drawPixelText(
+      ctx,
+      line,
+      Math.round((w - lw) / 2),
+      PAD + 5 * BIG + GAP + i * (5 * SMALL + LEAD),
+      SMALL,
+      '#6b675c',
+    )
+  })
+  return finish(ctx)
+}
+
 /** width/height plane size for a label texture at a given world width */
 function labelSize(tex: CanvasTexture, width: number): [number, number] {
   const img = tex.image as HTMLCanvasElement
@@ -64,6 +106,8 @@ export default function Drawers() {
   const view = useSystem((s) => s.view)
   const [open, setOpen] = useState<[boolean, boolean]>([false, false])
   const [note, setNote] = useState(false)
+  /* every secret in the ledger found → the note relents */
+  const complete = useWorld((s) => LEDGER.every((e) => s.found.includes(e.id)))
 
   const trays = useRef<(Group | null)[]>([null, null])
   const noteRig = useRef<Group>(null!)
@@ -82,19 +126,17 @@ export default function Drawers() {
     () => makeLabel('SECRETS', '#8a857a', null, 4, 2),
     [],
   )
-  const niceTryTex = useMemo(
-    () => makeLabel('NICE TRY!', '#1a1812', '#fdfcf7', 6, 10),
-    [],
-  )
+  // re-drawn the moment completion flips (and the old one released)
+  const noteTex = useMemo(() => makeEnvelopeNote(complete), [complete])
+  useEffect(() => () => noteTex.dispose(), [noteTex])
   useEffect(
     () => () => {
       starGeo.dispose()
       floppyTexes.forEach((t) => t.dispose())
       starTex.dispose()
       secretTex.dispose()
-      niceTryTex.dispose()
     },
-    [starGeo, floppyTexes, starTex, secretTex, niceTryTex],
+    [starGeo, floppyTexes, starTex, secretTex],
   )
 
   useFrame((_, delta) => {
@@ -261,7 +303,10 @@ export default function Drawers() {
                     </mesh>
                   </group>
 
-                  {/* envelope of secrets */}
+                  {/* envelope of secrets — filed upright against the back
+                      of the tray. The room camera looks down over the
+                      drawer front, so only the back of a tray is ever in
+                      view: lying flat up front it was invisible. */}
                   <Clickable
                     enabled={view === 'room' && open[1]}
                     label="top secret"
@@ -270,46 +315,51 @@ export default function Drawers() {
                       setNote((n) => !n)
                     }}
                   >
-                    <group position={[0.08, 0.008, 0.01]} rotation-y={-0.18}>
-                      <mesh castShadow>
-                        <boxGeometry args={[0.105, 0.004, 0.07]} />
-                        <meshStandardMaterial color="#efe8d8" roughness={0.9} />
-                      </mesh>
-                      {/* flap seams */}
-                      <mesh position={[-0.026, 0.0022, 0]} rotation-y={0.6}>
-                        <boxGeometry args={[0.062, 0.0008, 0.0016]} />
-                        <meshStandardMaterial
-                          color="#c9c0ab"
-                          roughness={0.9}
-                        />
-                      </mesh>
-                      <mesh position={[0.026, 0.0022, 0]} rotation-y={-0.6}>
-                        <boxGeometry args={[0.062, 0.0008, 0.0016]} />
-                        <meshStandardMaterial
-                          color="#c9c0ab"
-                          roughness={0.9}
-                        />
-                      </mesh>
-                      {/* wax seal */}
-                      <mesh position={[0, 0.0028, 0]}>
-                        <cylinderGeometry args={[0.008, 0.008, 0.002, 10]} />
-                        <meshStandardMaterial color="#8c2f26" roughness={0.5} />
-                      </mesh>
-                      {/* faint SECRETS stamp */}
-                      <mesh
-                        position={[0, 0.0032, 0.022]}
-                        rotation-x={-Math.PI / 2}
-                      >
-                        <planeGeometry args={labelSize(secretTex, 0.05)} />
-                        <meshBasicMaterial map={secretTex} transparent />
-                      </mesh>
+                    <group position={[0.08, 0.004, -0.082]} rotation-y={-0.12}>
+                      <group position={[0, 0.035, 0]} rotation-x={1.22}>
+                        <mesh castShadow>
+                          <boxGeometry args={[0.105, 0.004, 0.07]} />
+                          <meshStandardMaterial color="#efe8d8" roughness={0.9} />
+                        </mesh>
+                        {/* flap seams */}
+                        <mesh position={[-0.026, 0.0022, 0]} rotation-y={0.6}>
+                          <boxGeometry args={[0.062, 0.0008, 0.0016]} />
+                          <meshStandardMaterial
+                            color="#c9c0ab"
+                            roughness={0.9}
+                          />
+                        </mesh>
+                        <mesh position={[0.026, 0.0022, 0]} rotation-y={-0.6}>
+                          <boxGeometry args={[0.062, 0.0008, 0.0016]} />
+                          <meshStandardMaterial
+                            color="#c9c0ab"
+                            roughness={0.9}
+                          />
+                        </mesh>
+                        {/* wax seal */}
+                        <mesh position={[0, 0.0028, 0]}>
+                          <cylinderGeometry args={[0.008, 0.008, 0.002, 10]} />
+                          <meshStandardMaterial color="#8c2f26" roughness={0.5} />
+                        </mesh>
+                        {/* faint SECRETS stamp */}
+                        <mesh
+                          position={[0, 0.0032, 0.022]}
+                          rotation-x={-Math.PI / 2}
+                        >
+                          <planeGeometry args={labelSize(secretTex, 0.05)} />
+                          <meshBasicMaterial map={secretTex} transparent />
+                        </mesh>
+                      </group>
 
-                      {/* the note inside — "nice try" */}
+                      {/* the note inside — "nice try" (or, eventually, not);
+                          slides up out of the envelope's mouth */}
                       <group ref={noteRig} position={[0, 0.02, 0]} visible={false}>
                         <mesh>
-                          <planeGeometry args={labelSize(niceTryTex, 0.085)} />
+                          <planeGeometry
+                            args={labelSize(noteTex, complete ? 0.1 : 0.085)}
+                          />
                           <meshBasicMaterial
-                            map={niceTryTex}
+                            map={noteTex}
                             toneMapped={false}
                             side={DoubleSide}
                           />
