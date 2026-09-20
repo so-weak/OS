@@ -40,6 +40,7 @@ import {
 import { makeSoftCircle, makeWood } from './textures'
 import { useFontsReady } from '../useFontsReady'
 import { LEDGER, useWorld } from '../world'
+import { rb } from './rbox'
 
 /* =====================================================================
    THE STACKS — the 3D library in the back-left corner.
@@ -272,7 +273,7 @@ function Carcass({ oak, oakDark }: { oak: CanvasTexture; oakDark: CanvasTexture 
     <group>
       {/* plinth */}
       <mesh position={[0, CASE.plinth / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[CASE.w + 0.04, CASE.plinth, CASE.d + 0.02]} />
+        <roundedBoxGeometry args={rb(CASE.w + 0.04, CASE.plinth, CASE.d + 0.02)} />
         <meshStandardMaterial map={oakDark} roughness={0.85} />
       </mesh>
       {/* stiles */}
@@ -283,34 +284,34 @@ function Carcass({ oak, oakDark }: { oak: CanvasTexture; oakDark: CanvasTexture 
           castShadow
           receiveShadow
         >
-          <boxGeometry args={[CASE.side, stileH, CASE.d]} />
+          <roundedBoxGeometry args={rb(CASE.side, stileH, CASE.d)} />
           <meshStandardMaterial map={oak} roughness={0.8} />
         </mesh>
       ))}
       {/* back panel */}
       <mesh position={[0, CASE.plinth + stileH / 2, -CASE.d / 2 + 0.008]} receiveShadow>
-        <boxGeometry args={[CASE.w - CASE.side, stileH, 0.016]} />
+        <roundedBoxGeometry args={rb(CASE.w - CASE.side, stileH, 0.016)} />
         <meshStandardMaterial map={oakDark} roughness={0.95} />
       </mesh>
       {/* shelf boards — SHELF_Y[0] doubles as the base board, so there is
           no second slab coplanar with it */}
       {SHELF_Y.map((y) => (
         <mesh key={y} position={[0, y - CASE.board / 2, 0.006]} castShadow receiveShadow>
-          <boxGeometry args={[CASE.w - CASE.side, CASE.board, CASE.d - 0.02]} />
+          <roundedBoxGeometry args={rb(CASE.w - CASE.side, CASE.board, CASE.d - 0.02)} />
           <meshStandardMaterial map={oak} roughness={0.82} />
         </mesh>
       ))}
       {/* top board + cornice */}
       <mesh position={[0, CASE.h - 0.075, 0]} castShadow receiveShadow>
-        <boxGeometry args={[CASE.w - CASE.side, CASE.board, CASE.d - 0.02]} />
+        <roundedBoxGeometry args={rb(CASE.w - CASE.side, CASE.board, CASE.d - 0.02)} />
         <meshStandardMaterial map={oak} roughness={0.82} />
       </mesh>
       <mesh position={[0, CASE.h - 0.03, 0.012]} castShadow>
-        <boxGeometry args={[CASE.w + 0.06, 0.045, CASE.d + 0.03]} />
+        <roundedBoxGeometry args={rb(CASE.w + 0.06, 0.045, CASE.d + 0.03)} />
         <meshStandardMaterial map={oakDark} roughness={0.75} />
       </mesh>
       <mesh position={[0, CASE.h - 0.062, CASE.d / 2 + 0.014]} castShadow>
-        <boxGeometry args={[CASE.w + 0.04, 0.02, 0.016]} />
+        <roundedBoxGeometry args={rb(CASE.w + 0.04, 0.02, 0.016)} />
         <meshStandardMaterial color="#3b2717" roughness={0.7} />
       </mesh>
     </group>
@@ -425,12 +426,12 @@ function ShelfBook({
         >
           {/* the block of pages */}
           <mesh position={[0, dims.tall / 2, -0.004]} castShadow>
-            <boxGeometry args={[dims.thick * 0.82, dims.tall * 0.96, dims.deep]} />
+            <roundedBoxGeometry args={rb(dims.thick * 0.82, dims.tall * 0.96, dims.deep)} />
             <meshStandardMaterial color="#e6dcc2" roughness={0.95} />
           </mesh>
           {/* boards + spine */}
           <mesh position={[0, dims.tall / 2, 0]} castShadow>
-            <boxGeometry args={[dims.thick, dims.tall, dims.deep * 0.99]} />
+            <roundedBoxGeometry args={rb(dims.thick, dims.tall, dims.deep * 0.99)} />
             {/* the key rebuilds the material when the stamped spine
                 arrives: three compiles map support into the shader at
                 creation, so patching .map onto a plain material later
@@ -460,11 +461,11 @@ function Bookend({ x, y }: { x: number; y: number }) {
   return (
     <group position={[x, y, CASE_FRONT - 0.09]}>
       <mesh position={[0.014, 0.004, 0]} castShadow>
-        <boxGeometry args={[0.03, 0.008, 0.1]} />
+        <roundedBoxGeometry args={rb(0.03, 0.008, 0.1)} />
         <meshStandardMaterial color="#8a6a12" metalness={0.6} roughness={0.45} />
       </mesh>
       <mesh position={[0.002, 0.055, 0]} castShadow>
-        <boxGeometry args={[0.005, 0.11, 0.1]} />
+        <roundedBoxGeometry args={rb(0.005, 0.11, 0.1)} />
         <meshStandardMaterial color="#c9a227" metalness={0.7} roughness={0.35} />
       </mesh>
     </group>
@@ -492,7 +493,7 @@ function SecretVolume() {
         }}
       >
         <mesh position={[0, 0.1, 0]} castShadow>
-          <boxGeometry args={[0.03, 0.2, 0.14]} />
+          <roundedBoxGeometry args={rb(0.03, 0.2, 0.14)} />
           <meshStandardMaterial color="#101a14" roughness={0.6} />
         </mesh>
         <mesh position={[0, 0.1, 0.071]} rotation-z={Math.PI / 2}>
@@ -523,7 +524,7 @@ function FloorStack({ oak }: { oak: CanvasTexture }) {
         y += b.h
         return (
           <mesh key={i} position={[0, py, 0]} rotation-y={b.r} castShadow receiveShadow>
-            <boxGeometry args={[b.w, b.h, b.d]} />
+            <roundedBoxGeometry args={rb(b.w, b.h, b.d)} />
             <meshStandardMaterial color={b.c} roughness={0.9} />
           </mesh>
         )
@@ -633,7 +634,7 @@ function HeldBook({ slot, fontsReady }: { slot: Slot; fontsReady: boolean }) {
       >
         {/* page block */}
         <mesh renderOrder={50}>
-          <boxGeometry args={[w * 0.97, h * 0.97, t * 0.86]} />
+          <roundedBoxGeometry args={rb(w * 0.97, h * 0.97, t * 0.86)} />
           <meshBasicMaterial color="#e6dcc2" toneMapped={false} depthTest={false} transparent />
         </mesh>
         {/* boards: front faces +z, back faces -z, only one is ever seen */}

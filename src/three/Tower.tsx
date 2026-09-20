@@ -16,6 +16,7 @@ import Halo from './Halo'
 import { P, TOWER_POS, TOWER_SIZE, TOWER_YAW } from './layout'
 import { useRoom } from './roomState'
 import { makeLabel, makeLabelLines } from './textures'
+import { rb } from './rbox'
 
 /* =====================================================================
    The beige AT tower. Front panel: floppy drive (clickable — the disk
@@ -72,12 +73,12 @@ export default function Tower() {
         }}
       >
         <mesh castShadow receiveShadow>
-          <boxGeometry args={[TOWER_SIZE.w, TOWER_SIZE.h, TOWER_SIZE.d]} />
+          <roundedBoxGeometry args={rb(TOWER_SIZE.w, TOWER_SIZE.h, TOWER_SIZE.d)} />
           <meshStandardMaterial color={P.chassisDark} roughness={0.8} />
         </mesh>
         <mesh position={[0, 0, PANEL_Z]} castShadow>
-          <boxGeometry
-            args={[TOWER_SIZE.w - 0.01, TOWER_SIZE.h - 0.01, 0.018]}
+          <roundedBoxGeometry
+            args={rb(TOWER_SIZE.w - 0.01, TOWER_SIZE.h - 0.01, 0.018)}
           />
           <meshStandardMaterial color={P.chassis} roughness={0.72} />
         </mesh>
@@ -90,7 +91,7 @@ export default function Tower() {
             key={`${sx}${sz}`}
             position={[sx * 0.085, -TOWER_SIZE.h / 2 - 0.008, sz * 0.2]}
           >
-            <boxGeometry args={[0.03, 0.016, 0.03]} />
+            <roundedBoxGeometry args={rb(0.03, 0.016, 0.03)} />
             <meshStandardMaterial color={P.plasticDark} roughness={0.9} />
           </mesh>
         )),
@@ -99,7 +100,7 @@ export default function Tower() {
       {/* side vent slits */}
       {[-0.02, 0.02, 0.06].map((y) => (
         <mesh key={y} position={[-TOWER_SIZE.w / 2 - 0.001, y, 0.05]}>
-          <boxGeometry args={[0.002, 0.008, 0.3]} />
+          <roundedBoxGeometry args={rb(0.002, 0.008, 0.3)} />
           <meshStandardMaterial color={P.plasticDark} roughness={0.9} />
         </mesh>
       ))}
@@ -132,12 +133,12 @@ function CdTray({ labelTex }: { labelTex: ReturnType<typeof makeLabel> }) {
     <group position={[0, 0.095, PANEL_FACE]}>
       {/* bay plate */}
       <mesh>
-        <boxGeometry args={[0.15, 0.042, 0.004]} />
+        <roundedBoxGeometry args={rb(0.15, 0.042, 0.004)} />
         <meshStandardMaterial color={P.chassisDark} roughness={0.8} />
       </mesh>
       {/* tray front, a hair proud of the bay */}
       <mesh position={[-0.008, 0.006, 0.004]}>
-        <boxGeometry args={[0.118, 0.017, 0.005]} />
+        <roundedBoxGeometry args={rb(0.118, 0.017, 0.005)} />
         <meshStandardMaterial color={P.chassis} roughness={0.7} />
       </mesh>
       {/* the disc label showing through the tray's window */}
@@ -147,7 +148,7 @@ function CdTray({ labelTex }: { labelTex: ReturnType<typeof makeLabel> }) {
       </mesh>
       {/* seam under the tray, headphone jack, eject */}
       <mesh position={[-0.008, -0.006, 0.0025]}>
-        <boxGeometry args={[0.118, 0.0015, 0.001]} />
+        <roundedBoxGeometry args={rb(0.118, 0.0015, 0.001)} />
         <meshStandardMaterial color="#101012" roughness={0.9} />
       </mesh>
       <mesh position={[-0.055, -0.012, 0.0035]} rotation-x={Math.PI / 2}>
@@ -155,7 +156,7 @@ function CdTray({ labelTex }: { labelTex: ReturnType<typeof makeLabel> }) {
         <meshStandardMaterial color="#101012" roughness={0.9} />
       </mesh>
       <mesh position={[0.058, -0.012, 0.004]}>
-        <boxGeometry args={[0.014, 0.006, 0.005]} />
+        <roundedBoxGeometry args={rb(0.014, 0.006, 0.005)} />
         <meshStandardMaterial color={P.chassis} roughness={0.7} />
       </mesh>
     </group>
@@ -209,23 +210,23 @@ function FloppyDrive({
     >
       {/* bay plate */}
       <mesh position={[0, 0.16, PANEL_FACE]}>
-        <boxGeometry args={[0.15, 0.045, 0.006]} />
+        <roundedBoxGeometry args={rb(0.15, 0.045, 0.006)} />
         <meshStandardMaterial color={P.chassisDark} roughness={0.75} />
       </mesh>
       {/* slot */}
       <mesh position={[-0.008, 0.166, PANEL_FACE + 0.0035]}>
-        <boxGeometry args={[0.106, 0.009, 0.002]} />
+        <roundedBoxGeometry args={rb(0.106, 0.009, 0.002)} />
         <meshStandardMaterial color="#101012" roughness={0.9} />
       </mesh>
       {/* the disk itself, nose poking from the slot */}
       <group ref={disk} position={[-0.008, 0.166, PANEL_FACE - 0.038]}>
         <mesh castShadow>
-          <boxGeometry args={[0.096, 0.0075, 0.096]} />
+          <roundedBoxGeometry args={rb(0.096, 0.0075, 0.096)} />
           <meshStandardMaterial color="#2b3a8c" roughness={0.8} />
         </mesh>
         {/* metal shutter */}
         <mesh position={[0.012, 0.0042, -0.024]}>
-          <boxGeometry args={[0.036, 0.001, 0.042]} />
+          <roundedBoxGeometry args={rb(0.036, 0.001, 0.042)} />
           <meshStandardMaterial
             color="#b9bdc9"
             metalness={0.7}
@@ -234,7 +235,7 @@ function FloppyDrive({
         </mesh>
         {/* label: the boot disk */}
         <mesh position={[-0.01, 0.0042, 0.026]}>
-          <boxGeometry args={[0.06, 0.0008, 0.036]} />
+          <roundedBoxGeometry args={rb(0.06, 0.0008, 0.036)} />
           <meshStandardMaterial color="#eceadf" roughness={0.95} />
         </mesh>
         <mesh position={[-0.01, 0.0047, 0.026]} rotation-x={-Math.PI / 2}>
@@ -244,12 +245,12 @@ function FloppyDrive({
       </group>
       {/* eject button */}
       <mesh position={[0.058, 0.152, PANEL_FACE + 0.004]}>
-        <boxGeometry args={[0.014, 0.007, 0.005]} />
+        <roundedBoxGeometry args={rb(0.014, 0.007, 0.005)} />
         <meshStandardMaterial color={P.chassis} roughness={0.7} />
       </mesh>
       {/* drive activity LED */}
       <mesh position={[-0.058, 0.152, PANEL_FACE + 0.0035]}>
-        <boxGeometry args={[0.007, 0.004, 0.003]} />
+        <roundedBoxGeometry args={rb(0.007, 0.004, 0.003)} />
         <meshStandardMaterial
           ref={driveLed}
           color="#1c2f14"
@@ -310,7 +311,7 @@ function LedCluster({ mhzTex }: { mhzTex: ReturnType<typeof makeLabel> }) {
     <group position={[0, 0.02, 0]}>
       {/* power + hdd LEDs */}
       <mesh position={[-0.07, 0, PANEL_FACE]}>
-        <boxGeometry args={[0.01, 0.006, 0.003]} />
+        <roundedBoxGeometry args={rb(0.01, 0.006, 0.003)} />
         <meshStandardMaterial
           ref={powerLed}
           color="#2e2416"
@@ -319,7 +320,7 @@ function LedCluster({ mhzTex }: { mhzTex: ReturnType<typeof makeLabel> }) {
         />
       </mesh>
       <mesh position={[-0.045, 0, PANEL_FACE]}>
-        <boxGeometry args={[0.01, 0.006, 0.003]} />
+        <roundedBoxGeometry args={rb(0.01, 0.006, 0.003)} />
         <meshStandardMaterial
           ref={hddLed}
           color="#33150f"
@@ -343,7 +344,7 @@ function LedCluster({ mhzTex }: { mhzTex: ReturnType<typeof makeLabel> }) {
       />
       {/* recessed MHz readout */}
       <mesh position={[0.045, 0, PANEL_FACE - 0.001]}>
-        <boxGeometry args={[0.062, 0.02, 0.004]} />
+        <roundedBoxGeometry args={rb(0.062, 0.02, 0.004)} />
         <meshStandardMaterial color="#0a0d0a" roughness={0.5} />
       </mesh>
       <mesh position={[0.045, 0, PANEL_FACE + 0.0015]}>
@@ -440,7 +441,7 @@ function Fan() {
               rotation-z={a - Math.PI / 2 + 0.35}
               position={[Math.cos(a) * 0.019, Math.sin(a) * 0.019, 0]}
             >
-              <boxGeometry args={[0.011, 0.03, 0.002]} />
+              <roundedBoxGeometry args={rb(0.011, 0.03, 0.002)} />
               <meshStandardMaterial color="#26282c" roughness={0.7} />
             </mesh>
           )
@@ -449,7 +450,7 @@ function Fan() {
       {/* grille bars */}
       {[-0.018, 0, 0.018].map((y) => (
         <mesh key={y} position={[0, y, PANEL_FACE + 0.004]}>
-          <boxGeometry args={[0.074, 0.005, 0.002]} />
+          <roundedBoxGeometry args={rb(0.074, 0.005, 0.002)} />
           <meshStandardMaterial color={P.chassis} roughness={0.7} />
         </mesh>
       ))}

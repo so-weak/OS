@@ -16,6 +16,7 @@ import Halo from './Halo'
 import { useLibrary } from './libraryState'
 import { useRoom } from './roomState'
 import { DESK_TOP, P } from './layout'
+import { rb } from './rbox'
 
 /* =====================================================================
    Beige mechanical keyboard. Every keycap is a hinted instance — one
@@ -294,11 +295,11 @@ export default function Keyboard() {
     >
       {/* case */}
       <mesh castShadow receiveShadow>
-        <boxGeometry args={[BOARD_W, 0.022, BOARD_D]} />
+        <roundedBoxGeometry args={rb(BOARD_W, 0.022, BOARD_D)} />
         <meshStandardMaterial color={P.chassis} roughness={0.75} />
       </mesh>
       <mesh position={[0, 0.0115, 0]}>
-        <boxGeometry args={[BOARD_W - 0.014, 0.002, BOARD_D - 0.014]} />
+        <roundedBoxGeometry args={rb(BOARD_W - 0.014, 0.002, BOARD_D - 0.014)} />
         <meshStandardMaterial color={P.chassisDark} roughness={0.85} />
       </mesh>
 
@@ -319,7 +320,7 @@ export default function Keyboard() {
       {[0.155, 0.175, 0.195].map((x) => (
         <group key={x} position={[x, 0.0125, -BOARD_D / 2 + 0.009]}>
           <mesh>
-            <boxGeometry args={[0.007, 0.002, 0.004]} />
+            <roundedBoxGeometry args={rb(0.007, 0.002, 0.004)} />
             <meshStandardMaterial
               color="#1c2f14"
               emissive={P.ledGreen}

@@ -8,6 +8,7 @@ import Clickable from './Clickable'
 import { P } from './layout'
 import { makeLabel } from './textures'
 import { makeClockFace } from './windowArt'
+import { rb } from './rbox'
 
 /* =====================================================================
    The wall clock — the diegetic reason the light follows a clock the
@@ -77,24 +78,24 @@ export default function WallClock() {
         {/* hands pivot at the centre; each is offset so it points up at 0 */}
         <group ref={hour} position={[0, 0, 0.031]}>
           <mesh position={[0, 0.022, 0]}>
-            <boxGeometry args={[0.008, 0.058, 0.002]} />
+            <roundedBoxGeometry args={rb(0.008, 0.058, 0.002)} />
             <meshStandardMaterial color="#1a1812" roughness={0.6} />
           </mesh>
         </group>
         <group ref={minute} position={[0, 0, 0.0335]}>
           <mesh position={[0, 0.034, 0]}>
-            <boxGeometry args={[0.006, 0.084, 0.002]} />
+            <roundedBoxGeometry args={rb(0.006, 0.084, 0.002)} />
             <meshStandardMaterial color="#1a1812" roughness={0.6} />
           </mesh>
         </group>
         <group ref={second} position={[0, 0, 0.036]}>
           <mesh position={[0, 0.03, 0]}>
-            <boxGeometry args={[0.0022, 0.1, 0.0015]} />
+            <roundedBoxGeometry args={rb(0.0022, 0.1, 0.0015)} />
             <meshStandardMaterial color={P.ledRed} roughness={0.5} />
           </mesh>
           {/* counterweight */}
           <mesh position={[0, -0.018, 0]}>
-            <boxGeometry args={[0.005, 0.014, 0.0015]} />
+            <roundedBoxGeometry args={rb(0.005, 0.014, 0.0015)} />
             <meshStandardMaterial color={P.ledRed} roughness={0.5} />
           </mesh>
         </group>
@@ -105,7 +106,7 @@ export default function WallClock() {
         </mesh>
         {/* the brass plate: where this clock lives */}
         <mesh position={[0, -R - 0.024, 0.004]}>
-          <boxGeometry args={[0.1, 0.02, 0.006]} />
+          <roundedBoxGeometry args={rb(0.1, 0.02, 0.006)} />
           <meshStandardMaterial color="#8d7038" metalness={0.75} roughness={0.4} />
         </mesh>
         <mesh position={[0, -R - 0.024, 0.0075]}>

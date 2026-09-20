@@ -8,6 +8,7 @@ import { LEDGER, useWorld } from '../world'
 import Clickable from './Clickable'
 import { useRoom } from './roomState'
 import { DESK_TOP, P } from './layout'
+import { rb } from './rbox'
 
 /* =====================================================================
    The debugging duck, perched on top of the CRT. Clicking it squashes,
@@ -122,7 +123,7 @@ export default function Duck() {
           </mesh>
           {/* beak */}
           <mesh position={[0, 0.057, 0.036]}>
-            <boxGeometry args={[0.017, 0.007, 0.014]} />
+            <roundedBoxGeometry args={rb(0.017, 0.007, 0.014)} />
             <meshStandardMaterial color={P.amber} roughness={0.45} />
           </mesh>
           {/* eyes */}

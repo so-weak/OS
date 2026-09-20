@@ -23,6 +23,7 @@ import {
   makeWoodMaps,
   repeatSurface,
 } from './textures'
+import { rb } from './rbox'
 
 /* =====================================================================
    The desk itself plus desk props: the live mouse + pad, a coffee mug
@@ -47,7 +48,7 @@ export default function Desk() {
     <group position={[DESK.x, 0, DESK.z]}>
       {/* top */}
       <mesh position={[0, DESK_TOP - DESK.thick / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[DESK.w, DESK.thick, DESK.d]} />
+        <roundedBoxGeometry args={rb(DESK.w, DESK.thick, DESK.d)} />
         <meshStandardMaterial
           map={wood.map}
           bumpMap={wood.bumpMap}
@@ -72,13 +73,13 @@ export default function Desk() {
       {/* side panels */}
       {[-legX, legX].map((x) => (
         <mesh key={x} position={[x, legY, 0]} castShadow>
-          <boxGeometry args={[0.05, DESK_TOP - DESK.thick, DESK.d - 0.08]} />
+          <roundedBoxGeometry args={rb(0.05, DESK_TOP - DESK.thick, DESK.d - 0.08)} />
           <meshStandardMaterial color="#503620" roughness={0.85} />
         </mesh>
       ))}
       {/* back modesty panel */}
       <mesh position={[0, legY + 0.1, -DESK.d / 2 + 0.05]}>
-        <boxGeometry args={[DESK.w - 0.14, DESK_TOP - 0.25, 0.025]} />
+        <roundedBoxGeometry args={rb(DESK.w - 0.14, DESK_TOP - 0.25, 0.025)} />
         <meshStandardMaterial color="#463017" roughness={0.9} />
       </mesh>
 
@@ -113,13 +114,13 @@ function Nameplate() {
     <group position={[-0.33, DESK_TOP, 0.28]} rotation-y={0.1}>
       {/* base bar */}
       <mesh position={[0, 0.004, 0]} castShadow>
-        <boxGeometry args={[0.2, 0.008, 0.032]} />
+        <roundedBoxGeometry args={rb(0.2, 0.008, 0.032)} />
         <meshStandardMaterial color="#8a6a2c" metalness={0.85} roughness={0.32} />
       </mesh>
       {/* the plate, hinged at its foot and leaning back */}
       <group position={[0, 0.008, -0.006]} rotation-x={-0.42}>
         <mesh position={[0, 0.0275, 0]} castShadow>
-          <boxGeometry args={[0.2, 0.055, 0.004]} />
+          <roundedBoxGeometry args={rb(0.2, 0.055, 0.004)} />
           <meshStandardMaterial color="#b8913f" metalness={0.85} roughness={0.28} />
         </mesh>
         {/* enamelled face, not bare metal, so the fill light reads it */}
@@ -296,18 +297,18 @@ function PowerStrip() {
   return (
     <group position={[-0.42, 0.022, -1.0]} rotation-y={0.12}>
       <mesh castShadow>
-        <boxGeometry args={[0.2, 0.04, 0.07]} />
+        <roundedBoxGeometry args={rb(0.2, 0.04, 0.07)} />
         <meshStandardMaterial color={P.chassis} roughness={0.8} />
       </mesh>
       {[-0.05, 0.01].map((x) => (
         <mesh key={x} position={[x, 0.021, 0]}>
-          <boxGeometry args={[0.035, 0.004, 0.04]} />
+          <roundedBoxGeometry args={rb(0.035, 0.004, 0.04)} />
           <meshStandardMaterial color={P.plasticDark} roughness={0.8} />
         </mesh>
       ))}
       {/* glowing rocker switch */}
       <mesh position={[0.075, 0.021, 0]}>
-        <boxGeometry args={[0.02, 0.005, 0.03]} />
+        <roundedBoxGeometry args={rb(0.02, 0.005, 0.03)} />
         <meshStandardMaterial
           color={P.ledRed}
           emissive={P.ledRed}

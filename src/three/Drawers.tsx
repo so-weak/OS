@@ -21,6 +21,7 @@ import {
   makeLabel,
   pixelTextWidth,
 } from './textures'
+import { rb } from './rbox'
 
 /* =====================================================================
    The desk pedestal: two drawers that actually slide open.
@@ -172,12 +173,12 @@ export default function Drawers() {
     <group position={[0.6, 0, -0.56]}>
       {/* pedestal shell */}
       <mesh position={[0, PED.h / 2, -0.01]} castShadow receiveShadow>
-        <boxGeometry args={[PED.w, PED.h, PED.d]} />
+        <roundedBoxGeometry args={rb(PED.w, PED.h, PED.d)} />
         <meshStandardMaterial color="#503620" roughness={0.85} />
       </mesh>
       {/* kick plinth */}
       <mesh position={[0, 0.03, FRONT - 0.02]}>
-        <boxGeometry args={[PED.w - 0.02, 0.06, 0.02]} />
+        <roundedBoxGeometry args={rb(PED.w - 0.02, 0.06, 0.02)} />
         <meshStandardMaterial color="#3a2715" roughness={0.9} />
       </mesh>
 
@@ -197,12 +198,12 @@ export default function Drawers() {
               >
                 {/* drawer front */}
                 <mesh position={[0, 0, FRONT + 0.01]} castShadow>
-                  <boxGeometry args={[PED.w - 0.04, 0.115, 0.02]} />
+                  <roundedBoxGeometry args={rb(PED.w - 0.04, 0.115, 0.02)} />
                   <meshStandardMaterial color="#5e4023" roughness={0.8} />
                 </mesh>
                 {/* handle */}
                 <mesh position={[0, 0, FRONT + 0.028]}>
-                  <boxGeometry args={[0.09, 0.012, 0.012]} />
+                  <roundedBoxGeometry args={rb(0.09, 0.012, 0.012)} />
                   <meshStandardMaterial
                     color={P.metal}
                     metalness={0.6}
@@ -213,7 +214,7 @@ export default function Drawers() {
 
               {/* tray box */}
               <mesh position={[0, -0.035, FRONT - 0.12]}>
-                <boxGeometry args={[PED.w - 0.06, 0.012, 0.24]} />
+                <roundedBoxGeometry args={rb(PED.w - 0.06, 0.012, 0.24)} />
                 <meshStandardMaterial color="#6b4a2f" roughness={0.9} />
               </mesh>
               {[-1, 1].map((s) => (
@@ -221,12 +222,12 @@ export default function Drawers() {
                   key={s}
                   position={[s * (PED.w / 2 - 0.036), -0.005, FRONT - 0.12]}
                 >
-                  <boxGeometry args={[0.01, 0.07, 0.24]} />
+                  <roundedBoxGeometry args={rb(0.01, 0.07, 0.24)} />
                   <meshStandardMaterial color="#6b4a2f" roughness={0.9} />
                 </mesh>
               ))}
               <mesh position={[0, -0.005, FRONT - 0.235]}>
-                <boxGeometry args={[PED.w - 0.06, 0.07, 0.01]} />
+                <roundedBoxGeometry args={rb(PED.w - 0.06, 0.07, 0.01)} />
                 <meshStandardMaterial color="#6b4a2f" roughness={0.9} />
               </mesh>
 
@@ -242,7 +243,7 @@ export default function Drawers() {
                         rotation-y={(k - 1) * 0.16}
                       >
                         <mesh castShadow>
-                          <boxGeometry args={[0.09, 0.008, 0.093]} />
+                          <roundedBoxGeometry args={rb(0.09, 0.008, 0.093)} />
                           <meshStandardMaterial
                             color={FLOPPY_COLORS[k]}
                             roughness={0.8}
@@ -250,7 +251,7 @@ export default function Drawers() {
                         </mesh>
                         {/* metal shutter */}
                         <mesh position={[0.008, 0.0045, -0.028]}>
-                          <boxGeometry args={[0.034, 0.001, 0.03]} />
+                          <roundedBoxGeometry args={rb(0.034, 0.001, 0.03)} />
                           <meshStandardMaterial
                             color="#b9bdc9"
                             metalness={0.7}
@@ -274,12 +275,12 @@ export default function Drawers() {
                   {/* Silver Star badge on a felt pad */}
                   <group position={[-0.09, 0, 0]}>
                     <mesh position={[0, 0.004, 0]}>
-                      <boxGeometry args={[0.1, 0.008, 0.1]} />
+                      <roundedBoxGeometry args={rb(0.1, 0.008, 0.1)} />
                       <meshStandardMaterial color="#3a1d20" roughness={1} />
                     </mesh>
                     {/* ribbon */}
                     <mesh position={[0, 0.01, -0.022]}>
-                      <boxGeometry args={[0.026, 0.004, 0.036]} />
+                      <roundedBoxGeometry args={rb(0.026, 0.004, 0.036)} />
                       <meshStandardMaterial color="#8c2f26" roughness={0.7} />
                     </mesh>
                     <mesh
@@ -318,19 +319,19 @@ export default function Drawers() {
                     <group position={[0.08, 0.004, -0.082]} rotation-y={-0.12}>
                       <group position={[0, 0.035, 0]} rotation-x={1.22}>
                         <mesh castShadow>
-                          <boxGeometry args={[0.105, 0.004, 0.07]} />
+                          <roundedBoxGeometry args={rb(0.105, 0.004, 0.07)} />
                           <meshStandardMaterial color="#efe8d8" roughness={0.9} />
                         </mesh>
                         {/* flap seams */}
                         <mesh position={[-0.026, 0.0022, 0]} rotation-y={0.6}>
-                          <boxGeometry args={[0.062, 0.0008, 0.0016]} />
+                          <roundedBoxGeometry args={rb(0.062, 0.0008, 0.0016)} />
                           <meshStandardMaterial
                             color="#c9c0ab"
                             roughness={0.9}
                           />
                         </mesh>
                         <mesh position={[0.026, 0.0022, 0]} rotation-y={-0.6}>
-                          <boxGeometry args={[0.062, 0.0008, 0.0016]} />
+                          <roundedBoxGeometry args={rb(0.062, 0.0008, 0.0016)} />
                           <meshStandardMaterial
                             color="#c9c0ab"
                             roughness={0.9}

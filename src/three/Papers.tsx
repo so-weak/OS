@@ -17,6 +17,7 @@ import { useWorld } from '../world'
 import Clickable from './Clickable'
 import { DESK_TOP } from './layout'
 import { finish, makeCanvas, makeDocument } from './textures'
+import { rb } from './rbox'
 
 /* =====================================================================
    The desk paper stack. Clicking it lifts the top sheet right up to the
@@ -201,7 +202,7 @@ export default function Papers() {
               rotation-y={i * 0.06 - 0.05}
               receiveShadow
             >
-              <boxGeometry args={[0.15, 0.0014, 0.21]} />
+              <roundedBoxGeometry args={rb(0.15, 0.0014, 0.21)} />
               <meshStandardMaterial color="#e9e6da" roughness={0.95} />
             </mesh>
           ))}
@@ -227,7 +228,7 @@ export default function Papers() {
           }
         >
           <mesh position={[0, DESK_TOP + 0.0007, 0]} receiveShadow>
-            <boxGeometry args={[CARD_SIZE[0], 0.0014, CARD_SIZE[1]]} />
+            <roundedBoxGeometry args={rb(CARD_SIZE[0], 0.0014, CARD_SIZE[1])} />
             <meshStandardMaterial color="#f4efe0" roughness={0.95} />
           </mesh>
           <mesh position={[0, DESK_TOP + 0.0015, 0]} rotation-x={-Math.PI / 2}>

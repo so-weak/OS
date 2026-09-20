@@ -5,6 +5,7 @@ import { MathUtils, type Group } from 'three'
 import { useSystem } from '../os/store'
 import { DESK_TOP, P } from './layout'
 import { makeSoftCircle } from './textures'
+import { rb } from './rbox'
 
 /** The mouse lives on render layer 1: the desk's baked ContactShadows
     (a layer-0 ortho camera) must not freeze a blob at its rest position
@@ -64,11 +65,11 @@ export default function Mouse() {
     <group position={[0.42, DESK_TOP, 0.16]} rotation-y={-0.12}>
       {/* pad */}
       <mesh position={[0, 0.0025, 0]} receiveShadow>
-        <boxGeometry args={[0.24, 0.005, 0.2]} />
+        <roundedBoxGeometry args={rb(0.24, 0.005, 0.2)} />
         <meshStandardMaterial color="#173735" roughness={0.95} />
       </mesh>
       <mesh position={[0, 0.0055, 0]}>
-        <boxGeometry args={[0.22, 0.001, 0.18]} />
+        <roundedBoxGeometry args={rb(0.22, 0.001, 0.18)} />
         <meshStandardMaterial color="#1d4341" roughness={0.95} />
       </mesh>
 
@@ -96,11 +97,11 @@ export default function Mouse() {
         </RoundedBox>
         {/* button seam */}
         <mesh position={[0, 0.028, -0.026]}>
-          <boxGeometry args={[0.054, 0.004, 0.002]} />
+          <roundedBoxGeometry args={rb(0.054, 0.004, 0.002)} />
           <meshStandardMaterial color={P.chassisDarker} roughness={0.7} />
         </mesh>
         <mesh position={[0, 0.0285, -0.036]} rotation-x={-0.25}>
-          <boxGeometry args={[0.002, 0.004, 0.024]} />
+          <roundedBoxGeometry args={rb(0.002, 0.004, 0.024)} />
           <meshStandardMaterial color={P.chassisDarker} roughness={0.7} />
         </mesh>
         {/* tail */}

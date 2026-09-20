@@ -1,20 +1,18 @@
-import { useEffect, useMemo, useRef } from 'react'
-import { useFrame, useThree } from '@react-three/fiber'
+import { useEffect, useMemo } from 'react'
+import { useThree } from '@react-three/fiber'
 import { ContactShadows } from '@react-three/drei'
 import {
   BoxGeometry,
   Color,
   InstancedMesh,
-  MathUtils,
   MeshStandardMaterial,
   Object3D,
   type CanvasTexture,
-  type Group,
 } from 'three'
 import { awards, experience } from '../data/resume'
 import { useSystem } from '../os/store'
 import { playClick } from '../os/sound'
-import { useWorld } from '../world'
+import Chair from './Chair'
 import Clickable from './Clickable'
 import { P } from './layout'
 import {
@@ -26,6 +24,7 @@ import {
   makeWoodMaps,
   repeatSurface,
 } from './textures'
+import { rb } from './rbox'
 
 /* =====================================================================
    The dark cozy room: walls, floor, rug, posters, shelf with books,
@@ -150,7 +149,7 @@ export default function Room() {
 
       {/* baseboard along back wall */}
       <mesh position={[0.1, 0.045, -1.065]}>
-        <boxGeometry args={[4.6, 0.09, 0.02]} />
+        <roundedBoxGeometry args={rb(4.6, 0.09, 0.02)} />
         <meshStandardMaterial color="#201f24" roughness={0.85} />
       </mesh>
 
@@ -185,7 +184,7 @@ function Poster({
   return (
     <group position={position} rotation-z={tilt}>
       <mesh position={[0, 0, -0.004]}>
-        <boxGeometry args={[w + 0.02, h + 0.02, 0.012]} />
+        <roundedBoxGeometry args={rb(w + 0.02, h + 0.02, 0.012)} />
         <meshStandardMaterial color="#141519" roughness={0.7} />
       </mesh>
       <mesh position={[0, 0, 0.004]}>
@@ -258,13 +257,13 @@ function Shelf() {
     <group position={[1.14, 1.52, -0.97]}>
       {/* board */}
       <mesh castShadow receiveShadow>
-        <boxGeometry args={[0.68, 0.026, 0.21]} />
+        <roundedBoxGeometry args={rb(0.68, 0.026, 0.21)} />
         <meshStandardMaterial color={P.deskWood} roughness={0.85} />
       </mesh>
       {/* brackets */}
       {[-0.26, 0.26].map((x) => (
         <mesh key={x} position={[x, -0.05, -0.06]}>
-          <boxGeometry args={[0.02, 0.08, 0.08]} />
+          <roundedBoxGeometry args={rb(0.02, 0.08, 0.08)} />
           <meshStandardMaterial color={P.metal} roughness={0.6} metalness={0.4} />
         </mesh>
       ))}
@@ -280,7 +279,7 @@ function Shelf() {
           return (
             <group key={name} position={[x, 0.098, -0.005]} rotation-y={i === 0 ? 0.04 : 0}>
               <mesh castShadow>
-                <boxGeometry args={[0.052, 0.17, 0.15]} />
+                <roundedBoxGeometry args={rb(0.052, 0.17, 0.15)} />
                 <meshStandardMaterial color={BINDER_COLORS[i]} roughness={0.85} />
               </mesh>
               {/* spine label, reading top to bottom */}
@@ -295,7 +294,7 @@ function Shelf() {
       {/* tiny amber trophy, engraved */}
       <group position={[0.28, 0.013, 0.02]}>
         <mesh castShadow>
-          <boxGeometry args={[0.045, 0.018, 0.045]} />
+          <roundedBoxGeometry args={rb(0.045, 0.018, 0.045)} />
           <meshStandardMaterial color="#2e2a26" roughness={0.6} />
         </mesh>
         <mesh position={[0, -0.001, 0.0226]}>
@@ -328,11 +327,11 @@ function Shelf() {
       {/* spare floppy stack */}
       <group position={[-0.02, 0.02, 0.05]} rotation-y={-0.3}>
         <mesh castShadow>
-          <boxGeometry args={[0.09, 0.007, 0.093]} />
+          <roundedBoxGeometry args={rb(0.09, 0.007, 0.093)} />
           <meshStandardMaterial color="#2b3a8c" roughness={0.8} />
         </mesh>
         <mesh position={[0.006, 0.008, -0.004]} rotation-y={0.18}>
-          <boxGeometry args={[0.09, 0.007, 0.093]} />
+          <roundedBoxGeometry args={rb(0.09, 0.007, 0.093)} />
           <meshStandardMaterial color="#3a3d42" roughness={0.8} />
         </mesh>
       </group>
@@ -366,91 +365,17 @@ function buildBooks(): InstancedMesh {
   return mesh
 }
 
-/* ---------- desk chair (invented egg: click it and it spins) ---------- */
-function Chair() {
-  const view = useSystem((s) => s.view)
-  const rig = useRef<Group>(null!)
-  const spin = useRef({ x: 0, v: 0, target: 0 })
-
-  useFrame((_, delta) => {
-    const dt = Math.min(delta, 0.05)
-    // underdamped swivel — overshoots, wobbles, settles
-    const sp = spin.current
-    sp.v += (26 * (sp.target - sp.x) - 4.2 * sp.v) * dt
-    sp.x += sp.v * dt
-    const g = rig.current
-    g.rotation.y = sp.x
-    // centrifugal lean while it whips around
-    g.rotation.z = MathUtils.clamp(sp.v * 0.01, -0.05, 0.05)
-  })
-
-  return (
-    /* Parked left of the paperwork on purpose: from the room camera the
-       chair back sits in the gap between the bookcase and the desk props
-       (paper stack, crumpled shots), so it occludes neither. */
-    <group position={[-0.58, 0, -0.02]} rotation-y={0.35}>
-      <Clickable
-        enabled={view === 'room'}
-        label="quality assurance seat"
-        onActivate={() => {
-          spin.current.target += Math.PI * 2 * (Math.random() < 0.3 ? -1 : 1)
-          useWorld.getState().mark('chair')
-          playClick()
-        }}
-      >
-        <group ref={rig}>
-          {/* seat */}
-          <mesh position={[0, 0.47, 0]} castShadow>
-            <boxGeometry args={[0.42, 0.07, 0.4]} />
-            <meshStandardMaterial color="#3a3f47" roughness={0.9} />
-          </mesh>
-          {/* backrest */}
-          <mesh position={[0, 0.8, -0.2]} rotation-x={-0.14} castShadow>
-            <boxGeometry args={[0.4, 0.5, 0.06]} />
-            <meshStandardMaterial color="#3a3f47" roughness={0.9} />
-          </mesh>
-        </group>
-      </Clickable>
-      {/* gas post */}
-      <mesh position={[0, 0.3, 0]}>
-        <cylinderGeometry args={[0.024, 0.03, 0.32, 10]} />
-        <meshStandardMaterial color={P.metal} metalness={0.5} roughness={0.5} />
-      </mesh>
-      {/* star base */}
-      {[0, 1, 2, 3, 4].map((i) => {
-        const a = (i / 5) * Math.PI * 2
-        return (
-          <group key={i} rotation-y={a}>
-            <mesh position={[0.14, 0.05, 0]} rotation-z={-0.18}>
-              <boxGeometry args={[0.26, 0.03, 0.04]} />
-              <meshStandardMaterial
-                color="#23262b"
-                metalness={0.4}
-                roughness={0.6}
-              />
-            </mesh>
-            <mesh position={[0.26, 0.025, 0]}>
-              <sphereGeometry args={[0.024, 10, 8]} />
-              <meshStandardMaterial color="#17181c" roughness={0.7} />
-            </mesh>
-          </group>
-        )
-      })}
-    </group>
-  )
-}
-
 /* ---------- wall socket the machine plugs into ---------- */
 function WallSocket() {
   return (
     <group position={[0.72, 0.22, -1.066]}>
       <mesh>
-        <boxGeometry args={[0.09, 0.13, 0.014]} />
+        <roundedBoxGeometry args={rb(0.09, 0.13, 0.014)} />
         <meshStandardMaterial color={P.chassisDark} roughness={0.85} />
       </mesh>
       {[0.028, -0.028].map((y) => (
         <mesh key={y} position={[0, y, 0.008]}>
-          <boxGeometry args={[0.05, 0.045, 0.006]} />
+          <roundedBoxGeometry args={rb(0.05, 0.045, 0.006)} />
           <meshStandardMaterial color={P.plasticDark} roughness={0.8} />
         </mesh>
       ))}

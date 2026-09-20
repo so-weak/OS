@@ -8,6 +8,7 @@ import Clickable from './Clickable'
 import { CASE, CASE_FRONT } from './layout'
 import { useLibrary } from './libraryState'
 import { makePlacard, makeStrip } from './libraryTextures'
+import { rb } from './rbox'
 
 /* =====================================================================
    What the case wears: the engraved placard on the cornice, the brass
@@ -78,7 +79,7 @@ function CataloguePlate({ enabled }: { enabled: boolean }) {
       >
         {/* the plate itself, screwed to the rail */}
         <mesh castShadow>
-          <boxGeometry args={[w, w / strip.aspect, 0.01]} />
+          <roundedBoxGeometry args={rb(w, w / strip.aspect, 0.01)} />
           <meshStandardMaterial
             ref={mat}
             map={strip.tex}
@@ -91,7 +92,7 @@ function CataloguePlate({ enabled }: { enabled: boolean }) {
         </mesh>
         {/* a hit box with some depth, so the plate is easy to grab */}
         <mesh position={[0, 0, 0.02]}>
-          <boxGeometry args={[w + 0.04, 0.09, 0.04]} />
+          <roundedBoxGeometry args={rb(w + 0.04, 0.09, 0.04)} />
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
       </Clickable>

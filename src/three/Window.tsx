@@ -31,6 +31,7 @@ import {
   makeNightWindow,
   makeRainStreaks,
 } from './windowArt'
+import { rb } from './rbox'
 
 /* =====================================================================
    The window — the room's one scenery control and the explanation for
@@ -309,7 +310,7 @@ export default function RoomWindow() {
       >
         {/* frame */}
         <mesh castShadow>
-          <boxGeometry args={[0.72, 0.92, 0.045]} />
+          <roundedBoxGeometry args={rb(0.72, 0.92, 0.045)} />
           <meshStandardMaterial color="#1c1e22" roughness={0.8} />
         </mesh>
         {/* night sky (unlit so it reads as light) */}
@@ -347,28 +348,28 @@ export default function RoomWindow() {
         </mesh>
         {/* cross mullions */}
         <mesh position={[0, 0, 0.03]}>
-          <boxGeometry args={[0.62, 0.024, 0.012]} />
+          <roundedBoxGeometry args={rb(0.62, 0.024, 0.012)} />
           <meshStandardMaterial color="#1c1e22" roughness={0.8} />
         </mesh>
         <mesh position={[0, 0, 0.03]}>
-          <boxGeometry args={[0.024, 0.82, 0.012]} />
+          <roundedBoxGeometry args={rb(0.024, 0.82, 0.012)} />
           <meshStandardMaterial color="#1c1e22" roughness={0.8} />
         </mesh>
         {/* sill */}
         <mesh position={[0, -0.48, 0.05]} castShadow>
-          <boxGeometry args={[0.78, 0.03, 0.09]} />
+          <roundedBoxGeometry args={rb(0.78, 0.03, 0.09)} />
           <meshStandardMaterial color="#26282e" roughness={0.85} />
         </mesh>
       </Clickable>
 
       {/* venetian blind: headrail, two ladder tapes, eighteen slats */}
       <mesh position={[0, 0.425, SLAT_Z]}>
-        <boxGeometry args={[0.66, 0.036, 0.05]} />
+        <roundedBoxGeometry args={rb(0.66, 0.036, 0.05)} />
         <meshStandardMaterial color="#cfc8b7" roughness={0.7} />
       </mesh>
       {[-0.19, 0.19].map((tx) => (
         <mesh key={tx} position={[tx, 0.0, SLAT_Z + 0.026]}>
-          <boxGeometry args={[0.004, 0.8, 0.002]} />
+          <roundedBoxGeometry args={rb(0.004, 0.8, 0.002)} />
           <meshStandardMaterial color="#bdb5a3" roughness={0.9} />
         </mesh>
       ))}
@@ -402,7 +403,7 @@ export default function RoomWindow() {
           </mesh>
           {/* invisible hit pad — the cord is a thread from room distance */}
           <mesh position={[0, 0.07, 0]}>
-            <boxGeometry args={[0.04, 0.74, 0.024]} />
+            <roundedBoxGeometry args={rb(0.04, 0.74, 0.024)} />
             <meshBasicMaterial transparent opacity={0} depthWrite={false} />
           </mesh>
         </group>

@@ -31,10 +31,10 @@ export { DAY_FADE } from './live'
 const NIGHT = {
   bg: new Color(P.night),
   amb: new Color('#39415c'),
-  ambI: 0.22,
-  sky: new Color('#2c3654'),
-  ground: new Color('#171310'),
-  hemI: 0.3,
+  ambI: 0.42,
+  sky: new Color('#3a4a78'),
+  ground: new Color('#2a2018'),
+  hemI: 0.55,
 }
 const DAY = {
   bg: new Color('#2e3852'),
@@ -78,7 +78,7 @@ export default function DayNight() {
   const isDay = useRoom((s) => s.isDay)
   const powered = useSystem((s) => s.power !== 'off')
 
-  useFrame(({ scene }) => {
+  useFrame(({ scene, gl }) => {
     const m = live.day
     const d = live.dusk * live.day
     const a = amb.current
@@ -99,9 +99,12 @@ export default function DayNight() {
     if (scene.background instanceof Color)
       scene.background.copy(NIGHT.bg).lerp(DAY.bg, m).lerp(DUSK.bg, d)
 
-    // the env is baked per discrete state; everything continuous rides here
+    // the env is baked per discrete state; everything continuous rides here.
+    // It is also the room's soft bounce light, so it carries real weight.
     scene.environmentIntensity =
-      (0.3 + 0.6 * m + 2 * live.flash) * MathUtils.lerp(0.7, 1, live.lamp)
+      (0.85 + 0.5 * m + 2 * live.flash) * MathUtils.lerp(0.8, 1, live.lamp)
+    // a real camera would expose for a dim room: lift the whole image
+    gl.toneMappingExposure = MathUtils.lerp(1.5, 1.1, m)
   })
 
   return (
@@ -121,28 +124,63 @@ export default function DayNight() {
           <Lightformer
             form="rect"
             color="#ffb763"
-            intensity={7}
+            intensity={12}
             position={LAMP_POS}
-            scale={[0.12, 0.09, 1]}
+            scale={[0.16, 0.12, 1]}
             target={LAMP_AIM}
           />
         )}
+        {/* the window: the big cool source at night, soft white by day */}
         <Lightformer
           form="rect"
-          color={isDay ? '#e9eefb' : '#6f86bf'}
-          intensity={isDay ? 5 : 2.6}
+          color={isDay ? '#e9eefb' : '#7d95d0'}
+          intensity={isDay ? 6 : 5}
           position={WIN_POS}
-          scale={[0.62, 0.82, 1]}
+          scale={[0.9, 1.1, 1]}
           target={WIN_AIM}
         />
-        {/* faint warm bounce off the floorboards */}
+        {/* warm bounce off the floorboards and the lamp pool */}
         <Lightformer
           form="rect"
-          color="#5a3e2a"
-          intensity={isDay ? 1.1 : 0.7}
+          color="#7a5236"
+          intensity={isDay ? 1.6 : 1.3}
           position={FLOOR_POS}
           rotation-x={-Math.PI / 2}
           scale={[4.6, 3.9, 1]}
+        />
+        {/* the walls and ceiling: a dim cool-grey room around everything,
+            so shadowed sides still read (this is the "ambient" of a
+            photograph — light that has bounced) */}
+        <Lightformer
+          form="rect"
+          color="#55607a"
+          intensity={isDay ? 1.6 : 1.1}
+          position={rel(0.1, 2.5, 0.3)}
+          rotation-x={Math.PI / 2}
+          scale={[4.6, 3.9, 1]}
+        />
+        <Lightformer
+          form="rect"
+          color="#4a566e"
+          intensity={isDay ? 1.4 : 0.9}
+          position={rel(0.1, 1.3, -1.05)}
+          scale={[4.6, 2.6, 1]}
+        />
+        <Lightformer
+          form="rect"
+          color="#3f4a60"
+          intensity={isDay ? 1.2 : 0.8}
+          position={rel(2.2, 1.3, 0.3)}
+          rotation-y={-Math.PI / 2}
+          scale={[3.9, 2.6, 1]}
+        />
+        <Lightformer
+          form="rect"
+          color="#3f4a60"
+          intensity={isDay ? 1.2 : 0.8}
+          position={rel(-2.0, 1.3, 0.3)}
+          rotation-y={Math.PI / 2}
+          scale={[3.9, 2.6, 1]}
         />
       </Environment>
     </>

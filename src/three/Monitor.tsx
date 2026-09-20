@@ -28,6 +28,7 @@ import Halo from './Halo'
 import { BEZEL, GLASS_LOCAL, MON_POS, MON_YAW, P } from './layout'
 import { KNOB_LEVELS, useRoom } from './roomState'
 import { makeFeatheredRect, makeLabel, makeStickyNote } from './textures'
+import { rb } from './rbox'
 
 /* =====================================================================
    The CRT monitor. A thick beige bezel frames the glass; the OS itself
@@ -363,7 +364,7 @@ function Knob({
         </mesh>
         {/* indicator notch */}
         <mesh position={[0, 0.0036, 0.0041]}>
-          <boxGeometry args={[0.0014, 0.0032, 0.0008]} />
+          <roundedBoxGeometry args={rb(0.0014, 0.0032, 0.0008)} />
           <meshStandardMaterial color={P.chassis} roughness={0.5} />
         </mesh>
         {/* invisible hit pad — knobs are tiny from room distance */}
@@ -453,7 +454,7 @@ function MonitorShell({
     <group>
       {/* swivel base */}
       <mesh position={[0, 0.014, 0.02]} castShadow>
-        <boxGeometry args={[0.3, 0.028, 0.26]} />
+        <roundedBoxGeometry args={rb(0.3, 0.028, 0.26)} />
         <meshStandardMaterial color={P.chassisDark} roughness={0.8} />
       </mesh>
       <mesh position={[0, 0.042, 0.01]}>
@@ -463,18 +464,18 @@ function MonitorShell({
 
       {/* main body */}
       <mesh position={[0, 0.26, -0.005]} castShadow>
-        <boxGeometry args={[PLATE_W, BEZEL.top - BEZEL.bottom, 0.24]} />
+        <roundedBoxGeometry args={rb(PLATE_W, BEZEL.top - BEZEL.bottom, 0.24)} />
         <meshStandardMaterial color={P.chassis} roughness={0.75} />
       </mesh>
       {/* rear hump */}
       <mesh position={[0, 0.27, -0.17]} castShadow>
-        <boxGeometry args={[0.33, 0.3, 0.12]} />
+        <roundedBoxGeometry args={rb(0.33, 0.3, 0.12)} />
         <meshStandardMaterial color={P.chassisDark} roughness={0.8} />
       </mesh>
       {/* top vents */}
       {[-0.06, -0.09, -0.12].map((z) => (
         <mesh key={z} position={[0, 0.4605, z]}>
-          <boxGeometry args={[0.3, 0.0016, 0.012]} />
+          <roundedBoxGeometry args={rb(0.3, 0.0016, 0.012)} />
           <meshStandardMaterial color={P.plasticDark} roughness={0.9} />
         </mesh>
       ))}
@@ -492,7 +493,7 @@ function MonitorShell({
 
       {/* power LED */}
       <mesh position={[0.202, KNOB_Y, PLATE_FRONT + 0.001]}>
-        <boxGeometry args={[0.0085, 0.005, 0.003]} />
+        <roundedBoxGeometry args={rb(0.0085, 0.005, 0.003)} />
         <meshStandardMaterial
           ref={ledMat}
           color="#123a1c"
