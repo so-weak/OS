@@ -60,6 +60,13 @@ import { rb } from './rbox'
 
 /** Gap between neighbouring volumes. */
 const GAP = 0.002
+/** Room kept free at the right end of the TOP shelf for SOUBHIK.SYS (the
+    volume that is not a book, 0.03 wide) plus a finger of air. Without it
+    a full top row runs straight through the secret volume. */
+const SECRET_RESERVE = 0.045
+/** Usable run of a row (row 0 is the top shelf). */
+const runCapacity = (row: number): number =>
+  row === 0 ? CASE.inner - SECRET_RESERVE : CASE.inner
 /** How far a hovered spine creeps out of the shelf. */
 const PEEK = 0.026
 
@@ -92,7 +99,7 @@ function layoutShelves(list: Book[]): { shelves: Shelves; shown: number } {
     const even: Shelves = []
     for (let i = 0; i < rows; i++) even.push(list.slice(i * per, (i + 1) * per))
     const overflows = even.some(
-      (row) => row.reduce((sum, b) => sum + width(b), 0) > CASE.inner,
+      (row, i) => row.reduce((sum, b) => sum + width(b), 0) > runCapacity(i),
     )
     if (!overflows) return { shelves: even, shown: list.length }
   }
@@ -102,7 +109,7 @@ function layoutShelves(list: Book[]): { shelves: Shelves; shown: number } {
   let shown = 0
   for (const b of list) {
     const w = width(b)
-    if (used + w > CASE.inner && shelves[shelves.length - 1].length) {
+    if (used + w > runCapacity(shelves.length - 1) && shelves[shelves.length - 1].length) {
       if (shelves.length === rows) break
       shelves.push([])
       used = 0
@@ -132,7 +139,8 @@ function layoutSlots(shelves: Shelves): Slot[] {
   shelves.forEach((row, i) => {
     const dims = row.map(bookDims)
     const run = dims.reduce((sum, d) => sum + d.thick + GAP, -GAP)
-    let x = -run / 2
+    // centred in the usable run: the top row leaves room for SOUBHIK.SYS
+    let x = -run / 2 - (i === 0 ? SECRET_RESERVE / 2 : 0)
     row.forEach((book, j) => {
       slots.push({
         book,
@@ -152,7 +160,10 @@ function rowEnds(shelves: Shelves): { x: number; y: number }[] {
   shelves.forEach((row, i) => {
     if (!row.length) return
     const run = row.reduce((sum, b) => sum + bookDims(b).thick + GAP, -GAP)
-    ends.push({ x: run / 2 + 0.012, y: shelfHeight(i) })
+    ends.push({
+      x: run / 2 + 0.012 - (i === 0 ? SECRET_RESERVE / 2 : 0),
+      y: shelfHeight(i),
+    })
   })
   return ends
 }

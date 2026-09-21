@@ -14,6 +14,7 @@ import {
 } from 'three'
 import { reducedMotion } from '../world'
 import { WINDOW } from './layout'
+import Crocs from './Crocs'
 import { FramedPrint } from './Room'
 import { makeFeatheredRect } from './textures'
 import { plasterMaps } from './tex/noise'
@@ -22,7 +23,6 @@ import {
   bluePotGeo,
   boxesGeo,
   cardsGeo,
-  chappalsGeo,
   headphonesGeo,
   heartLeafGeometry,
   hookGeo,
@@ -71,7 +71,7 @@ export default function SetDressing() {
       <SillPlant />
       <Headphones position={[0.445, 1.14, WALL_Z + 0.0005]} />
       <CorkBoard position={[0.87, 1.06, WALL_Z + 0.0005]} tilt={0.008} />
-      <Chappals position={[-0.02, 0, -0.86]} />
+      <Crocs position={[-0.02, 0, -0.86]} />
       {/* the right-hand side: a rubber plant, boxes, a print, a cloth bag */}
       <Plant position={[1.4, 0, -0.84]} />
       <Boxes position={[1.99, 0, 0.78]} />
@@ -511,17 +511,6 @@ function Radiator() {
         <meshStandardMaterial vertexColors metalness={0.85} roughness={0.32} />
       </mesh>
     </group>
-  )
-}
-
-/* ---------- flip-flops kicked off under the desk ---------- */
-function Chappals({ position }: { position: [number, number, number] }) {
-  const g = useMemo(() => chappalsGeo(), [])
-  useEffect(() => () => g.dispose(), [g])
-  return (
-    <mesh geometry={g} position={position} castShadow receiveShadow>
-      <meshStandardMaterial vertexColors roughness={0.6} />
-    </mesh>
   )
 }
 

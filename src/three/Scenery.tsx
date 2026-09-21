@@ -1,4 +1,5 @@
 import Moth from './Moth'
+import NeonRainbow from './NeonRainbow'
 import WallClock from './WallClock'
 import { WeatherRunner } from './weather'
 
@@ -14,6 +15,7 @@ export default function Scenery() {
     <>
       <WallClock />
       <Moth />
+      <NeonRainbow />
       <WeatherRunner />
     </>
   )
