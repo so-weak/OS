@@ -111,7 +111,14 @@ case and removed: a shelf is a bad search box.
 - `src/data/library/**` — THE catalogue. Static content, authored in
   code. `types.ts` has the `Book` shape; `index.ts` has the queries
   (`selectBooks`, `genres`, `authors`, `genreStyle`, …). Nothing in the
-  running site may add, edit or delete a volume. The array ends with a
+  running site may add, edit or delete a volume. The array is Soubhik's
+  REAL shelf (photo by photo, left to right; spine colours match the real
+  editions). `note` is the one-line verdict on the back cover (≤ ~150
+  chars, the board wraps at seven lines); `review` is the fuller take
+  shown on the catalogue page. Ratings and reviews were drafted in his
+  voice for him to edit. The default catalogue sort is SHELF ORDER (array
+  order); LATEST / DATE READ and the finished-this-year card only appear
+  once some book has a `finished` date. The array ends with a
   `/* @library:insert` marker — the dev-only ISBN scanner writes new
   entries directly above it.
 - `src/library/art.ts` — the bookbinding, shared by both halves: spines,
@@ -126,8 +133,11 @@ case and removed: a shelf is a bad search box.
   than the Win9x kit. Query state lives in the URL so a shelf is
   shareable; `pieces.tsx` mounts the canvases into the DOM (detach on
   cleanup, never zero the backing store — StrictMode remounts).
-- `src/three/Bookcase.tsx` — the case in the room: four shelves packed
-  from the catalogue newest-first, hover peek, the held volume (same
+- `src/three/Bookcase.tsx` — the case in the room: five shelves (0.263 m
+  apart; spines capped at 0.22 m so the tallest clears the board above)
+  stocked in `books.ts` order — newest-first only when books carry
+  `finished` dates, otherwise exactly the order they stand on the real
+  shelves — hover peek, the held volume (same
   `depthTest:false` + `renderOrder` trick as Papers.tsx, for the same
   blending reason), dust on unread books, and the secret volume that
   swings the case open. `src/three/CaseFittings.tsx` adds the placard,
