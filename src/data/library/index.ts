@@ -132,7 +132,7 @@ export function surname(author: string): string {
 /** "Hastie, Tibshirani & Friedman" / "Beyer et al." */
 export function authorLine(b: Book): string {
   const names = b.authors.map(surname)
-  if (names.length === 0) return 'Anonymous'
+  if (names.length === 0) return ''
   if (names.length === 1) return names[0]
   if (names.length === 2) return `${names[0]} & ${names[1]}`
   if (names.length === 3) return `${names[0]}, ${names[1]} & ${names[2]}`

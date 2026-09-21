@@ -68,7 +68,7 @@ export function Spine({
       className="spine"
       style={{ width: w }}
       onClick={() => onOpen(book.id)}
-      title={`${book.title} — ${book.authors.join(', ')}`}
+      title={book.authors.length ? `${book.title} — ${book.authors.join(', ')}` : book.title}
     >
       <span className="spine-body" style={{ width: w, height: h }}>
         <CanvasArt make={make} className="spine-art" alt={book.title} />

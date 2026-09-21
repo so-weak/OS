@@ -50,6 +50,7 @@ import { INTRO_CAM_POS, P } from './layout'
 declare global {
   interface Window {
     __gl?: import('three').WebGLRenderer
+    __scene?: import('three').Scene
   }
 }
 
@@ -68,9 +69,13 @@ export default function Scene() {
           position: [INTRO_CAM_POS.x, INTRO_CAM_POS.y, INTRO_CAM_POS.z],
         }}
         gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
-        onCreated={({ gl }) => {
-          // dev only: window.__gl.info.render → { calls, triangles } for perf checks
-          if (import.meta.env.DEV) window.__gl = gl
+        onCreated={({ gl, scene }) => {
+          // dev only: window.__gl.info.render → { calls, triangles } for perf
+          // checks; window.__scene lets experiments toggle lights and meshes
+          if (import.meta.env.DEV) {
+            window.__gl = gl
+            window.__scene = scene
+          }
         }}
         eventSource={document.getElementById('root') as HTMLElement}
         eventPrefix="client"

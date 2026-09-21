@@ -57,7 +57,8 @@ function mulberry(seed: number): () => number {
 
 /** Author credit used by shelf tooltips and card subtitles. */
 export function spineTooltip(b: Book): string {
-  return `${b.title} — ${authorLine(b)}`
+  const by = authorLine(b)
+  return by ? `${b.title} — ${by}` : b.title
 }
 
 /* ---------- physical size of a volume ---------- */
