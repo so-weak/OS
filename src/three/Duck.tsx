@@ -1,6 +1,12 @@
-import { useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
-import type { Group } from 'three'
+import {
+  CatmullRomCurve3,
+  SphereGeometry,
+  Vector3,
+  type BufferGeometry,
+  type Group,
+} from 'three'
 import { useSystem } from '../os/store'
 import { DUCK_GOLDEN_AT, useEggs } from '../os/eggs'
 import { playBeep } from '../os/sound'
@@ -8,7 +14,14 @@ import { LEDGER, useWorld } from '../world'
 import Clickable from './Clickable'
 import { useRoom } from './roomState'
 import { DESK_TOP, P } from './layout'
-import { rb } from './rbox'
+import {
+  at,
+  deform,
+  mergeParts,
+  slab,
+  smoothstep,
+  sweep,
+} from './tex/furniture'
 
 /* =====================================================================
    The debugging duck, perched on top of the CRT. Clicking it squashes,
@@ -26,6 +39,122 @@ const BODY_DARK = '#dca81f'
 /** after DUCK_GOLDEN_AT debugging sessions the duck ascends */
 const GOLD = '#ffe066'
 const GOLD_DARK = '#e6b93c'
+
+/* ---------- the duck, modelled as one moulded vinyl shell ---------- */
+
+/** body + neck + head as ONE swept shell: a spine that runs tail → chest →
+    neck → crown, with an elliptical section that swells and pinches. Duck
+    faces +z, sits on y = 0. */
+const SPINE: [number, number, number][] = [
+  [0, 0.044, -0.041],
+  [0, 0.034, -0.03],
+  [0, 0.0265, -0.014],
+  [0, 0.0255, 0.006],
+  [0, 0.03, 0.022],
+  [0, 0.046, 0.026],
+  [0, 0.062, 0.018],
+  [0, 0.0815, 0.0145],
+]
+/** [t, in-plane half-thickness, lateral half-width] */
+const KEYS: [number, number, number][] = [
+  [0, 0.0012, 0.0012],
+  [0.143, 0.0085, 0.0105],
+  [0.286, 0.0215, 0.0265],
+  [0.429, 0.0252, 0.0292],
+  [0.571, 0.0225, 0.0262],
+  [0.714, 0.0128, 0.0138],
+  [0.857, 0.0196, 0.0188],
+]
+function section(t: number): [number, number] {
+  const last = KEYS[KEYS.length - 1]
+  if (t >= last[0]) {
+    // hemispherical crown
+    const k = Math.sqrt(Math.max(0, 1 - ((t - last[0]) / (1 - last[0])) ** 2))
+    return [last[1] * k, last[2] * k]
+  }
+  for (let i = 1; i < KEYS.length; i++) {
+    if (t <= KEYS[i][0]) {
+      const a = KEYS[i - 1]
+      const b = KEYS[i]
+      const u = smoothstep(a[0], b[0], t)
+      return [a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u]
+    }
+  }
+  return [last[1], last[2]]
+}
+
+interface DuckGeo {
+  body: BufferGeometry
+  wings: BufferGeometry
+  beak: BufferGeometry
+  eyes: BufferGeometry
+}
+
+function buildDuck(): DuckGeo {
+  const path = new CatmullRomCurve3(
+    SPINE.map((p) => new Vector3(...p)),
+    false,
+    'centripetal',
+  ).getPoints(48)
+  const body = sweep({
+    path,
+    radial: 20,
+    size: section,
+    ref: new Vector3(1, 0, 0),
+    vTile: 0.03,
+  })
+  // a flat-ish underside so it sits instead of rocking
+  deform(body, (p) => {
+    if (p.y < 0.0038) p.y = 0.0038 - (0.0038 - p.y) * 0.25
+  })
+
+  // wings: flattened leaf shapes swept back and up
+  const wingParts: BufferGeometry[] = []
+  for (const s of [-1, 1]) {
+    const w = new SphereGeometry(0.0135, 10, 8)
+    w.scale(0.34, 0.6, 1.15)
+    deform(w, (p) => {
+      p.y += 0.006 * smoothstep(0, -0.014, p.z)
+      p.x *= 1 - 0.3 * smoothstep(-0.005, -0.016, p.z)
+    })
+    wingParts.push(at(w, s * 0.0275, 0.0285, -0.004))
+  }
+
+  // bill: a soft flat slab, tapered and lifted at the tip
+  const bill = slab({
+    hx: 0.0088,
+    hz: 0.0095,
+    h: 0.0046,
+    rc: 0.0045,
+    rt: 0.0022,
+    rbot: 0.002,
+    tile: 0.03,
+    rings: 1,
+    bottomRings: 1,
+    arc: 3,
+    straight: 1,
+    bevel: 2,
+  })
+  deform(bill, (p) => {
+    const f = smoothstep(-0.002, 0.0095, p.z)
+    p.x *= 1 - 0.32 * f
+    p.y += 0.0022 * f * f
+  })
+  at(bill, 0, 0.0533, 0.0355)
+
+  const eyeParts: BufferGeometry[] = []
+  for (const s of [-1, 1]) {
+    eyeParts.push(
+      at(new SphereGeometry(0.0028, 8, 6), s * 0.0088, 0.0688, 0.0336),
+    )
+  }
+  return {
+    body,
+    wings: mergeParts(wingParts),
+    beak: bill,
+    eyes: mergeParts(eyeParts),
+  }
+}
 
 /** What the tooltip says for this many clicks and this ledger. */
 function duckLabel(clicks: number, found: readonly string[]): string {
@@ -48,6 +177,13 @@ export default function Duck() {
   const rig = useRef<Group>(null!)
   const spin = useRef({ x: 0, v: 0, target: 0 })
   const squash = useRef({ s: 0, v: 0 })
+  const geo = useMemo(() => buildDuck(), [])
+  useEffect(
+    () => () => {
+      Object.values(geo).forEach((g) => g.dispose())
+    },
+    [geo],
+  )
 
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05)
@@ -81,7 +217,8 @@ export default function Duck() {
         onActivate={() => {
           const n = clicks + 1
           // the 10th click earns a triple victory spin and a promotion
-          spin.current.target += n === DUCK_GOLDEN_AT ? Math.PI * 6 : Math.PI * 2
+          spin.current.target +=
+            n === DUCK_GOLDEN_AT ? Math.PI * 6 : Math.PI * 2
           squash.current.v = -1.8
           playBeep()
           clickDuck() // the world counts it (and marks duck10 at 10)
@@ -91,48 +228,42 @@ export default function Duck() {
         }}
       >
         <group ref={rig} rotation-y={-0.5}>
-          {/* body */}
-          <mesh position={[0, 0.026, 0]} scale={[1, 0.82, 1.15]} castShadow>
-            <sphereGeometry args={[0.03, 16, 12]} />
-            <meshStandardMaterial color={body} roughness={0.5} />
+          {/* body, neck and head: one glossy vinyl shell */}
+          <mesh geometry={geo.body} castShadow>
+            <meshPhysicalMaterial
+              color={body}
+              roughness={0.3}
+              clearcoat={0.7}
+              clearcoatRoughness={0.18}
+            />
           </mesh>
-          {/* tail flick */}
-          <mesh
-            position={[0, 0.042, -0.032]}
-            rotation-x={-0.85}
-            scale={[0.65, 1, 0.75]}
-          >
-            <sphereGeometry args={[0.013, 10, 8]} />
-            <meshStandardMaterial color={body} roughness={0.5} />
+          {/* embossed wings, a shade deeper */}
+          <mesh geometry={geo.wings}>
+            <meshPhysicalMaterial
+              color={bodyDark}
+              roughness={0.34}
+              clearcoat={0.6}
+              clearcoatRoughness={0.2}
+            />
           </mesh>
-          {/* wings */}
-          {[-1, 1].map((s) => (
-            <mesh
-              key={s}
-              position={[s * 0.026, 0.028, -0.002]}
-              scale={[0.35, 0.62, 1]}
-            >
-              <sphereGeometry args={[0.0135, 10, 8]} />
-              <meshStandardMaterial color={bodyDark} roughness={0.55} />
-            </mesh>
-          ))}
-          {/* head */}
-          <mesh position={[0, 0.062, 0.014]} castShadow>
-            <sphereGeometry args={[0.02, 16, 12]} />
-            <meshStandardMaterial color={body} roughness={0.5} />
+          {/* bill */}
+          <mesh geometry={geo.beak}>
+            <meshPhysicalMaterial
+              color={P.amber}
+              roughness={0.32}
+              clearcoat={0.6}
+              clearcoatRoughness={0.2}
+            />
           </mesh>
-          {/* beak */}
-          <mesh position={[0, 0.057, 0.036]}>
-            <roundedBoxGeometry args={rb(0.017, 0.007, 0.014)} />
-            <meshStandardMaterial color={P.amber} roughness={0.45} />
+          {/* glossy bead eyes */}
+          <mesh geometry={geo.eyes}>
+            <meshPhysicalMaterial
+              color={P.ink}
+              roughness={0.06}
+              clearcoat={1}
+              clearcoatRoughness={0.03}
+            />
           </mesh>
-          {/* eyes */}
-          {[-1, 1].map((s) => (
-            <mesh key={s} position={[s * 0.009, 0.068, 0.028]}>
-              <sphereGeometry args={[0.0027, 8, 6]} />
-              <meshStandardMaterial color={P.ink} roughness={0.3} />
-            </mesh>
-          ))}
         </group>
       </Clickable>
     </group>

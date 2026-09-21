@@ -12,32 +12,54 @@ import { reducedMotion, useWorld } from '../world'
 import Clickable from './Clickable'
 import { live } from './live'
 import { makeSoftCircle } from './textures'
+import { mothTextures } from './tex/window'
 
 /* =====================================================================
    The moth — the one thing that only happens when nobody is watching.
-   A single soft sprite on a jittered Lissajous around the lamp head,
-   fading in over ~2 s once the world says idle (night, lamp on), gone
-   within 2 s of any input. Click it and it darts off; it comes back
-   the next time you stop moving. No timers of its own: idle is the
-   world's, the fade is a damp in useFrame.
+   A small painted moth (two wings and a furry body, so the wing-beat
+   squashes the wings and not the body) on a jittered Lissajous around
+   the lamp head, turning to face the way it flies, fading in over ~2 s
+   once the world says idle (night, lamp on), gone within 2 s of any
+   input. Click it and it darts off; it comes back the next time you stop
+   moving. No timers of its own: idle is the world's, the fade is a damp
+   in useFrame.
    ===================================================================== */
 
 /* lamp head in world space: Lamp.tsx group (-0.55, DESK_TOP, -0.78)
    rotated -0.4 about y, HEAD (0.305, 0.205, 0) → about here */
 const HEAD = new Vector3(-0.27, 0.95, -0.66)
 const DART = new Vector3(0.22, 0.34, 0.26)
+const SIZE = 0.03
 
 export default function Moth() {
   const view = useSystem((s) => s.view)
   const [shown, setShown] = useState(false)
   const grp = useRef<Group>(null!)
-  const sprite = useRef<Sprite>(null!)
-  const mat = useRef<SpriteMaterial>(null!)
-  const tex = useMemo(() => makeSoftCircle(), [])
-  useEffect(() => () => tex.dispose(), [tex])
+  const wings = useRef<Sprite>(null!)
+  const wingMat = useRef<SpriteMaterial>(null!)
+  const bodyMat = useRef<SpriteMaterial>(null!)
+  const glowMat = useRef<SpriteMaterial>(null!)
+  const tex = useMemo(() => mothTextures(), [])
+  const glowTex = useMemo(() => makeSoftCircle(), [])
+  useEffect(
+    () => () => {
+      tex.dispose()
+      glowTex.dispose()
+    },
+    [tex, glowTex],
+  )
   const still = useMemo(() => reducedMotion(), [])
 
-  const stRef = useRef({ level: 0, dart: -1, phase: -1, shown: false })
+  const stRef = useRef({
+    level: 0,
+    dart: -1,
+    phase: -1,
+    shown: false,
+    heading: 0,
+    right: new Vector3(),
+    vel: new Vector3(),
+    prev: new Vector3(),
+  })
 
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05)
@@ -61,6 +83,7 @@ export default function Moth() {
 
     const t = state.clock.elapsedTime + st.phase
     const p = grp.current.position
+    st.prev.copy(p)
     // a loose figure around the shade, plus the nervous high-frequency jitter
     p.set(
       HEAD.x + 0.085 * Math.sin(t * 1.3) + 0.006 * Math.sin(t * 23),
@@ -73,10 +96,29 @@ export default function Moth() {
       p.addScaledVector(DART, k)
       if (st.dart > 3) st.dart = -1
     }
-    // wingbeat: the sprite squashes sideways ~19 times a second
-    const beat = 0.55 + 0.45 * Math.abs(Math.sin(t * 60))
-    sprite.current.scale.set(0.03 * beat, 0.021, 1)
-    mat.current.opacity = st.level * (0.75 + 0.25 * beat)
+
+    // face the way it flies, as the camera sees it (smoothed: the jitter
+    // would otherwise spin it)
+    st.vel.copy(p).sub(st.prev)
+    st.right.setFromMatrixColumn(state.camera.matrixWorld, 0)
+    const sx = st.vel.dot(st.right)
+    const sy = st.vel.y
+    if (sx * sx + sy * sy > 1e-9) {
+      const aim = Math.atan2(-sx, sy)
+      let d = aim - st.heading
+      d = Math.atan2(Math.sin(d), Math.cos(d))
+      st.heading += d * Math.min(1, dt * 4)
+    }
+    wingMat.current.rotation = st.heading
+    bodyMat.current.rotation = st.heading
+
+    // wingbeat: the wings squash sideways ~19 times a second
+    const beat = 0.5 + 0.5 * Math.abs(Math.sin(t * 60))
+    wings.current.scale.set(SIZE * (0.42 + 0.58 * beat), SIZE, 1)
+    const o = st.level
+    wingMat.current.opacity = o * (0.78 + 0.22 * beat)
+    bodyMat.current.opacity = o
+    glowMat.current.opacity = o * 0.35 * (0.8 + 0.2 * beat)
   })
 
   return (
@@ -89,11 +131,32 @@ export default function Moth() {
           stRef.current.dart = 0
         }}
       >
-        <sprite ref={sprite} scale={[0.03, 0.021, 1]}>
+        {/* the lamp's light on its dust: a faint halo behind the wings */}
+        <sprite scale={[SIZE * 2.4, SIZE * 2.4, 1]} renderOrder={44}>
           <spriteMaterial
-            ref={mat}
-            map={tex}
-            color="#ffe2b0"
+            ref={glowMat}
+            map={glowTex}
+            color="#ffd9a0"
+            transparent
+            opacity={0}
+            depthWrite={false}
+          />
+        </sprite>
+        <sprite ref={wings} scale={[SIZE, SIZE, 1]} renderOrder={45}>
+          <spriteMaterial
+            ref={wingMat}
+            map={tex.wings}
+            color="#ffeccc"
+            transparent
+            opacity={0}
+            depthWrite={false}
+          />
+        </sprite>
+        <sprite scale={[SIZE * 0.62, SIZE * 0.62, 1]} renderOrder={46}>
+          <spriteMaterial
+            ref={bodyMat}
+            map={tex.body}
+            color="#ffeccc"
             transparent
             opacity={0}
             depthWrite={false}

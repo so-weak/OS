@@ -48,7 +48,16 @@ export const GLASS_WORLD_NORMAL = new Vector3(0, 0, 1).applyEuler(monEuler)
 /* ---------- the window opening in the back wall ----------
    Shared by BackWall.tsx (cuts the hole), Window.tsx (frame, glass, sky
    layers) and Room.tsx (things that must clear it). `wallZ` is the plane
-   of the back wall; the sky layers sit BEHIND it (more negative z). */
+   of the back wall's room-side face; the sky layers sit BEHIND it (more
+   negative z).
+
+   The hole in the wall is frameW × frameH and `reveal` deep; the sash and
+   its glass (glassW × glassH, `glassDepth` behind the wall face) sit in
+   the outer part of that tunnel. A moulded casing stands `casingProud`
+   off the wall and reaches `casingW` beyond the hole on the top and both
+   sides, so the whole unit measures (frameW + 2·casingW) × (frameH +
+   casingW + apron) on the wall; the sill projects `sillOut` into the room
+   and runs `sillHorn` past the casing at each end. */
 export const WINDOW = {
   x: -1.18,
   y: 1.52,
@@ -57,6 +66,12 @@ export const WINDOW = {
   glassH: 0.82,
   frameW: 0.72,
   frameH: 0.92,
+  reveal: 0.14,
+  glassDepth: 0.098,
+  casingW: 0.065,
+  casingProud: 0.025,
+  sillOut: 0.085,
+  sillHorn: 0.03,
 } as const
 
 /* ---------- tower ---------- */

@@ -712,12 +712,17 @@ export interface SurfaceMaps {
   map: CanvasTexture
   bumpMap: CanvasTexture
   roughnessMap: CanvasTexture
+  /** optional tangent-space normal map (plaster, varnished wood). Prefer it
+      over bumpMap where a material can take one; bumpMap stays filled so
+      older consumers keep working. */
+  normalMap?: CanvasTexture
 }
 
 export function disposeSurface(m: SurfaceMaps): void {
   m.map.dispose()
   m.bumpMap.dispose()
   m.roughnessMap.dispose()
+  m.normalMap?.dispose()
 }
 
 /** Set the same repeat on every map of a surface. */
@@ -725,6 +730,7 @@ export function repeatSurface(m: SurfaceMaps, x: number, y: number): SurfaceMaps
   m.map.repeat.set(x, y)
   m.bumpMap.repeat.set(x, y)
   m.roughnessMap.repeat.set(x, y)
+  m.normalMap?.repeat.set(x, y)
   return m
 }
 

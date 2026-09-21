@@ -1,9 +1,11 @@
-import { useLayoutEffect, useMemo, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import {
-  BackSide,
-  DoubleSide,
+  CanvasTexture,
   Object3D,
+  SRGBColorSpace,
+  Vector3,
+  type BufferGeometry,
   type MeshStandardMaterial,
   type PointLight,
   type SpotLight,
@@ -12,22 +14,391 @@ import { useSystem } from '../os/store'
 import { playClick } from '../os/sound'
 import { useWorld } from '../world'
 import Clickable from './Clickable'
-import { DESK_TOP, P } from './layout'
+import { DESK_TOP } from './layout'
 import { live } from './live'
 import { MOUSE_LAYER } from './Mouse'
 import { useRoom } from './roomState'
+import { plasticMaps } from './tex/noise'
+import {
+  arc,
+  at,
+  helixPath,
+  knurled,
+  lathe,
+  mergeParts,
+  rod,
+  sweep,
+  woodBox,
+} from './tex/furniture'
+import { makeCanvas } from './textures'
 
 /* =====================================================================
    Articulated desk lamp — the room's main warm light and an easter
    egg: clicking it snaps the light off and the whole mood changes.
    Intensity is damped, so it swells on rather than popping.
+
+   An architect's lamp: a weighted enamel base on a rubber ring with a
+   rocker switch, two parallelogram arms (a pair of rods per link with a
+   coil spring between them), knurled brass pivots, and a rolled-rim
+   dome shade — green enamel outside, warm off-white inside — over a
+   glass bulb with a visible filament.
+
+   Draw calls: enamel, dark metal, brass, springs, shade interior, bulb
+   glass, bulb glow — seven for the whole lamp.
    ===================================================================== */
 
 const WARM = '#ffb763'
 
-// arm joints in lamp-local space (x leans over the desk)
+// arm joints in lamp-local space (x leans over the desk). ELBOW/HEAD are
+// also the anchors for the lights below, so they never move.
 const ELBOW: [number, number, number] = [0.089, 0.244, 0]
 const HEAD: [number, number, number] = [0.305, 0.205, 0]
+
+const J0 = new Vector3(0, 0.052, 0)
+const ELB = new Vector3(...ELBOW)
+/** the bulb sits just under HEAD, inside the shade */
+const BULB = new Vector3(HEAD[0], HEAD[1] - 0.02, 0)
+/** shade tipped toward the desk: local -y (the opening) → forward and down */
+const TILT = 0.96
+const NECK_DIST = 0.048
+const NECK = new Vector3(
+  BULB.x - NECK_DIST * Math.sin(TILT),
+  BULB.y + NECK_DIST * Math.cos(TILT),
+  0,
+)
+
+const ROD_OFFSET = 0.0125
+
+interface LampGeo {
+  enamel: BufferGeometry
+  dark: BufferGeometry
+  brass: BufferGeometry
+  spring: BufferGeometry
+  shadeIn: BufferGeometry
+  glass: BufferGeometry
+  glow: BufferGeometry
+}
+
+/** Dome shade about local Y, opening toward -y. Returns exterior (with
+    the rolled rim) and interior (top-to-bottom, facing the axis). */
+function buildShade(): { outer: BufferGeometry; inner: BufferGeometry } {
+  const a = 0.0585
+  const b = 0.092
+  const base = -0.042
+  const dome: [number, number][] = []
+  const steps = 12
+  const phiMax = Math.acos(0.0135 / a)
+  for (let i = 0; i <= steps; i++) {
+    const phi = (i / steps) * phiMax
+    dome.push([a * Math.cos(phi), base + b * Math.sin(phi)])
+  }
+  // exterior: rolled rim (under and around the lip), then up the dome
+  const outer = lathe(
+    [
+      ...arc(a - 0.0028, base, 0.0028, Math.PI, Math.PI * 2, 7),
+      ...dome.slice(1),
+      [0.0135, base + b * Math.sin(phiMax) + 0.0035],
+      [0.0108, base + b * Math.sin(phiMax) + 0.0035],
+    ],
+    { segments: 40, crease: 1.2, vTile: 0.08, uTile: 0.08 },
+  )
+  // interior wall, from the neck hole down to the inner rim
+  const ai = a - 0.0056
+  const bi = b - 0.004
+  const inner: [number, number][] = []
+  const phiIn = Math.acos(0.0108 / ai)
+  for (let i = 0; i <= steps; i++) {
+    const phi = phiIn * (1 - i / steps)
+    inner.push([ai * Math.cos(phi), base + bi * Math.sin(phi)])
+  }
+  const shadeIn = lathe(inner, { segments: 40, crease: 2 })
+  return { outer, inner: shadeIn }
+}
+
+function buildLamp(): LampGeo {
+  const enamel: BufferGeometry[] = []
+  const dark: BufferGeometry[] = []
+  const brass: BufferGeometry[] = []
+  const spring: BufferGeometry[] = []
+  const seg = { segments: 40, crease: 1.1, vTile: 0.08, uTile: 0.08 }
+
+  /* ---- weighted base: rubber ring, cast enamel body, turret, switch ---- */
+  dark.push(
+    lathe(
+      [
+        [0.055, 0.0],
+        [0.0648, 0.0],
+        [0.0668, 0.0018],
+        [0.0668, 0.0072],
+        [0.0648, 0.0092],
+        [0.055, 0.0092],
+      ],
+      { segments: 40, crease: 1.2, vTile: 0.08, uTile: 0.08 },
+    ),
+  )
+  enamel.push(
+    lathe(
+      [
+        [0, 0.0085],
+        [0.061, 0.0085],
+        [0.0645, 0.0115],
+        [0.0655, 0.016],
+        [0.0645, 0.0205],
+        [0.0605, 0.0245],
+        [0.052, 0.0275],
+        [0.038, 0.0305],
+        [0.029, 0.0345],
+        [0.0245, 0.041],
+        [0.0225, 0.05],
+        [0.0, 0.05],
+      ],
+      { ...seg, segments: 40 },
+    ),
+  )
+  // brass collar where the turret meets the dome
+  brass.push(
+    lathe(
+      [
+        [0.0262, 0.0352],
+        [0.0292, 0.0362],
+        [0.0292, 0.0402],
+        [0.0262, 0.0415],
+      ],
+      { segments: 28, vTile: 0.06, uTile: 0.06 },
+    ),
+  )
+  // cheek plates that carry the first pivot
+  for (const z of [-0.0125, 0.0125]) {
+    enamel.push(
+      at(
+        woodBox(0.028, 0.03, 0.0045, 0.0018, 1, 0.06, 'x'),
+        0,
+        J0.y + 0.002,
+        z,
+      ),
+    )
+  }
+  // rocker switch on the front shoulder
+  const swA = 1.05
+  const swR = 0.049
+  const sw = woodBox(0.017, 0.007, 0.011, 0.0022, 1, 0.06, 'x').rotateX(0.22)
+  dark.push(
+    at(
+      sw,
+      swR * Math.cos(swA),
+      0.0275,
+      swR * Math.sin(swA),
+      0,
+      Math.PI / 2 - swA,
+      0,
+    ),
+  )
+
+  // the cord leaves the back of the base through a moulded strain-relief boot
+  dark.push(
+    at(
+      lathe(
+        [
+          [0.0058, -0.003],
+          [0.0056, 0.0],
+          [0.0046, 0.006],
+          [0.0037, 0.0125],
+          [0.003, 0.0132],
+          [0, 0.0132],
+        ],
+        { segments: 10, crease: 1.4 },
+      ).rotateZ(Math.PI / 2),
+      -0.0625,
+      0.0095,
+      0,
+    ),
+  )
+
+  /* ---- parallelogram arms: two rods a link, a spring between ---- */
+  const link = (from: Vector3, to: Vector3, springTurns: number): void => {
+    const d = new Vector3().subVectors(to, from)
+    d.normalize()
+    const n = new Vector3(-d.y, d.x, 0)
+    for (const s of [-1, 1]) {
+      const o = n.clone().multiplyScalar(s * ROD_OFFSET)
+      dark.push(rod([from.clone().add(o), to.clone().add(o)], 0.0032, 8))
+    }
+    const a = from.clone().addScaledVector(d, 0.0125)
+    const b = to.clone().addScaledVector(d, -0.0125)
+    const path = helixPath(a, b, 0.0048, springTurns, 6)
+    spring.push(
+      sweep({ path, radial: 4, size: () => [0.00085, 0.00085], vTile: 0.02 }),
+    )
+    // a small hook at each end so the spring reads as anchored
+    spring.push(
+      rod(
+        [
+          a.clone().addScaledVector(d, -0.004),
+          a.clone().addScaledVector(d, 0.002),
+        ],
+        0.0011,
+        5,
+      ),
+    )
+    spring.push(
+      rod(
+        [
+          b.clone().addScaledVector(d, -0.002),
+          b.clone().addScaledVector(d, 0.004),
+        ],
+        0.0011,
+        5,
+      ),
+    )
+  }
+  link(J0, ELB, 15)
+  link(ELB, NECK, 14)
+
+  // pivots: dark hub between two brass knurled knobs
+  for (const p of [J0, ELB, NECK]) {
+    dark.push(
+      at(
+        lathe(
+          [
+            [0, -0.0115],
+            [0.0105, -0.0115],
+            [0.0105, 0.0115],
+            [0, 0.0115],
+          ],
+          { segments: 16, vTile: 0.06, uTile: 0.06 },
+        ).rotateX(Math.PI / 2),
+        p.x,
+        p.y,
+        0,
+      ),
+    )
+    for (const z of [-1, 1]) {
+      brass.push(at(knurled(0.0082, 0.0075, 14), p.x, p.y, z * 0.0165))
+    }
+  }
+
+  /* ---- shade, socket, bulb ---- */
+  const sh = buildShade()
+  enamel.push(at(sh.outer, BULB.x, BULB.y, 0, 0, 0, TILT))
+  const shadeIn = at(sh.inner, BULB.x, BULB.y, 0, 0, 0, TILT)
+
+  // brass socket up into the neck
+  brass.push(
+    at(
+      lathe(
+        [
+          [0.0092, 0.0195],
+          [0.0098, 0.0205],
+          [0.0098, 0.0455],
+          [0.0092, 0.0465],
+          [0.0, 0.0465],
+        ],
+        { segments: 18, crease: 1.2, vTile: 0.06, uTile: 0.06 },
+      ),
+      BULB.x,
+      BULB.y,
+      0,
+      0,
+      0,
+      TILT,
+    ),
+  )
+  // screw threads on the bulb cap, along the shade axis
+  for (let i = 0; i < 3; i++) {
+    const dist = 0.0245 + i * 0.0026
+    brass.push(
+      at(
+        lathe(
+          [
+            [0.0086, 0],
+            [0.0102, 0.0009],
+            [0.0086, 0.0018],
+          ],
+          { segments: 16 },
+        ),
+        BULB.x - Math.sin(TILT) * dist,
+        BULB.y + Math.cos(TILT) * dist,
+        0,
+        0,
+        0,
+        TILT,
+      ),
+    )
+  }
+  const glass = at(
+    lathe(
+      [
+        [0, -0.0285],
+        [0.0065, -0.0275],
+        [0.0132, -0.0225],
+        [0.0186, -0.0135],
+        [0.0207, -0.0025],
+        [0.0198, 0.0072],
+        [0.0148, 0.0152],
+        [0.0098, 0.0194],
+        [0.0088, 0.0212],
+        [0, 0.0212],
+      ],
+      { segments: 24, crease: 2 },
+    ),
+    BULB.x,
+    BULB.y,
+    0,
+    0,
+    0,
+    TILT,
+  )
+  // filament: a coil between two support wires, glowing
+  const fa = new Vector3(-0.0065, -0.0035, 0)
+  const fb = new Vector3(0.0065, -0.0035, 0)
+  const coil = sweep({
+    path: helixPath(fa, fb, 0.0017, 5, 6),
+    radial: 4,
+    size: () => [0.00055, 0.00055],
+    vTile: 0.02,
+  })
+  const posts = [
+    rod(
+      [new Vector3(-0.0065, -0.0035, 0), new Vector3(-0.0045, 0.0125, 0)],
+      0.0004,
+      4,
+    ),
+    rod(
+      [new Vector3(0.0065, -0.0035, 0), new Vector3(0.0045, 0.0125, 0)],
+      0.0004,
+      4,
+    ),
+  ]
+  const glow = mergeParts(
+    [coil, ...posts].map((g) => at(g, BULB.x, BULB.y, 0, 0, 0, TILT)),
+  )
+
+  return {
+    enamel: mergeParts(enamel),
+    dark: mergeParts(dark),
+    brass: mergeParts(brass),
+    spring: mergeParts(spring),
+    shadeIn,
+    glass,
+    glow,
+  }
+}
+
+/** A 1×64 warm gradient for the shade interior: hottest at the neck,
+    fading toward the rim. */
+function makeInnerGlow(): CanvasTexture {
+  const ctx = makeCanvas(4, 64)
+  const g = ctx.createLinearGradient(0, 0, 0, 64)
+  // canvas top = v 1 = the rim; canvas bottom = v 0 = the neck
+  g.addColorStop(0, '#8a6a44')
+  g.addColorStop(0.65, '#f0d2a4')
+  g.addColorStop(1, '#ffffff')
+  ctx.fillStyle = g
+  ctx.fillRect(0, 0, 4, 64)
+  const t = new CanvasTexture(ctx.canvas)
+  t.colorSpace = SRGBColorSpace
+  return t
+}
 
 export default function Lamp() {
   const view = useSystem((s) => s.view)
@@ -43,6 +414,25 @@ export default function Lamp() {
     o.position.set(0.62, 0, 0.12)
     return o
   }, [])
+
+  const geo = useMemo(() => buildLamp(), [])
+  const res = useMemo(
+    () => ({ pla: plasticMaps(23, 256, 3), glow: makeInnerGlow() }),
+    [],
+  )
+  useEffect(
+    () => () => {
+      Object.values(geo).forEach((g) => g.dispose())
+    },
+    [geo],
+  )
+  useEffect(
+    () => () => {
+      res.pla.dispose()
+      res.glow.dispose()
+    },
+    [res],
+  )
 
   // the mouse sits on its own render layer (see Mouse.tsx); the lamp
   // must still throw its shadow
@@ -71,80 +461,74 @@ export default function Lamp() {
           toggleLamp()
         }}
       >
-        {/* weighted base */}
-        <mesh position={[0, 0.011, 0]} castShadow>
-          <cylinderGeometry args={[0.055, 0.06, 0.022, 18]} />
-          <meshStandardMaterial color={P.plasticDark} roughness={0.6} />
+        {/* cast base, turret cheeks and the dome shade: green enamel */}
+        <mesh geometry={geo.enamel} castShadow receiveShadow>
+          <meshPhysicalMaterial
+            color="#1f5a45"
+            roughness={0.42}
+            metalness={0.15}
+            clearcoat={0.55}
+            clearcoatRoughness={0.3}
+            normalMap={res.pla.normalMap}
+            normalScale={[0.035, 0.035]}
+          />
         </mesh>
-        <mesh position={[0, 0.026, 0]}>
-          <cylinderGeometry args={[0.018, 0.026, 0.012, 12]} />
-          <meshStandardMaterial color={P.metal} metalness={0.5} roughness={0.5} />
+        {/* rubber ring, rods, hubs, rocker */}
+        <mesh geometry={geo.dark} castShadow>
+          <meshStandardMaterial
+            color="#1a1c1f"
+            metalness={0.55}
+            roughness={0.42}
+          />
         </mesh>
-
-        {/* lower arm */}
-        <mesh
-          position={[ELBOW[0] / 2, 0.02 + (ELBOW[1] - 0.02) / 2, 0]}
-          rotation-z={-0.35}
-          castShadow
-        >
-          <cylinderGeometry args={[0.0068, 0.0068, 0.245, 8]} />
-          <meshStandardMaterial color={P.metal} metalness={0.55} roughness={0.45} />
+        {/* knurled knobs, collar, socket */}
+        <mesh geometry={geo.brass} castShadow>
+          <meshStandardMaterial
+            color="#b58c4f"
+            metalness={1}
+            roughness={0.36}
+          />
         </mesh>
-        {/* upper arm */}
-        <mesh
-          position={[
-            (ELBOW[0] + HEAD[0]) / 2,
-            (ELBOW[1] + HEAD[1]) / 2,
-            0,
-          ]}
-          rotation-z={-1.75}
-          castShadow
-        >
-          <cylinderGeometry args={[0.006, 0.006, 0.22, 8]} />
-          <meshStandardMaterial color={P.metal} metalness={0.55} roughness={0.45} />
+        {/* the counterbalance springs */}
+        <mesh geometry={geo.spring}>
+          <meshStandardMaterial
+            color="#a4a9b1"
+            metalness={1}
+            roughness={0.34}
+          />
         </mesh>
-        {/* joints */}
-        {[[0, 0.03, 0] as const, ELBOW, HEAD].map((p, i) => (
-          <mesh key={i} position={[p[0], p[1], p[2]]}>
-            <sphereGeometry args={[0.0125, 10, 8]} />
-            <meshStandardMaterial color={P.plasticDark} roughness={0.55} />
-          </mesh>
-        ))}
-
-        {/* shade + bulb, aimed down across the desk */}
-        <group position={HEAD} rotation-z={-0.96}>
-          <mesh castShadow>
-            <cylinderGeometry args={[0.016, 0.052, 0.085, 14, 1, true]} />
-            <meshStandardMaterial
-              color="#245c48"
-              roughness={0.45}
-              metalness={0.25}
-              side={DoubleSide}
-            />
-          </mesh>
-          {/* the inside of the shade, lit warm by the bulb */}
-          <mesh scale={[0.97, 0.98, 0.97]}>
-            <cylinderGeometry args={[0.016, 0.052, 0.085, 14, 1, true]} />
-            <meshStandardMaterial
-              ref={innerMat}
-              color="#3a2c1e"
-              emissive={WARM}
-              emissiveIntensity={1.1}
-              roughness={0.55}
-              side={BackSide}
-            />
-          </mesh>
-          <mesh position={[0, -0.028, 0]}>
-            <sphereGeometry args={[0.019, 12, 10]} />
-            <meshStandardMaterial
-              ref={bulbMat}
-              color="#fff4dc"
-              emissive={WARM}
-              emissiveIntensity={2.4}
-              toneMapped={false}
-            />
-          </mesh>
-        </group>
+        {/* the inside of the shade, lit warm by the bulb */}
+        <mesh geometry={geo.shadeIn}>
+          <meshStandardMaterial
+            ref={innerMat}
+            color="#6e5c46"
+            emissive={WARM}
+            emissiveMap={res.glow}
+            emissiveIntensity={1.1}
+            roughness={0.7}
+          />
+        </mesh>
+        {/* glass envelope */}
+        <mesh geometry={geo.glass}>
+          <meshPhysicalMaterial
+            color="#fff6e4"
+            transparent
+            opacity={0.2}
+            roughness={0.04}
+            clearcoat={1}
+            depthWrite={false}
+          />
+        </mesh>
+        {/* hot filament */}
+        <mesh geometry={geo.glow}>
+          <meshStandardMaterial
+            ref={bulbMat}
+            color="#fff4dc"
+            emissive={WARM}
+            emissiveIntensity={2.4}
+            toneMapped={false}
+          />
+        </mesh>
       </Clickable>
 
       {/* the light itself (outside Clickable so raycasts stay cheap) */}
