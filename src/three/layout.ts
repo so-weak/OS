@@ -135,10 +135,12 @@ export const CASE = {
   inner: 0.71,
 } as const
 
-/** Top surface of each book shelf (local y). Books stand on these. */
-export const SHELF_Y = [0.12, 0.46, 0.8, 1.14] as const
+/** Top surface of each book shelf (local y). Books stand on these.
+    Five shelves at 0.263 m: the real shelf is over a hundred books, and
+    the tallest spine (0.22 m, see bookDims) still clears the board above. */
+export const SHELF_Y = [0.12, 0.383, 0.646, 0.909, 1.172] as const
 /** Headroom above each shelf — the tallest volume must clear this. */
-export const SHELF_CLEAR = 0.31
+export const SHELF_CLEAR = 0.24
 
 /** Front plane of the carcass in local z. */
 export const CASE_FRONT = CASE.d / 2

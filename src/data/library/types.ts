@@ -49,8 +49,12 @@ export interface Book {
   rating?: number
   /** 'YYYY-MM' or 'YYYY-MM-DD' — drives the LATEST shelf */
   finished?: string
-  /** the personal note, printed on the back cover */
+  /** the personal note, printed on the back cover — keep it to one
+      punchy line (about 140 characters): the back board wraps at seven */
   note?: string
+  /** the fuller review, shown on the catalogue page under the note.
+      Plain paragraphs separated by a blank line. */
+  review?: string
   /** surfaces the book on the PICKS shelf */
   pick?: boolean
   spine?: SpineStyle

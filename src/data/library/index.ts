@@ -12,7 +12,7 @@ export { books }
 /** The brass tabs along the front of the catalogue slide. */
 export type ShelfTab = 'all' | 'latest' | 'picks' | 'reading' | 'unread'
 
-export type SortMode = 'latest' | 'rating' | 'title' | 'author'
+export type SortMode = 'shelf' | 'latest' | 'rating' | 'title' | 'author'
 
 export interface LibraryQuery {
   text: string
@@ -24,16 +24,23 @@ export interface LibraryQuery {
   sort: SortMode
 }
 
+/* The LATEST tab is about dates read; a shelf without any dates has no
+   use for it, so it only appears once some book has one. */
+const HAS_DATES = books.some((b) => b.finished)
+
 export const SHELF_TABS: { id: ShelfTab; label: string }[] = [
   { id: 'all', label: 'ALL' },
-  { id: 'latest', label: 'LATEST' },
+  ...(HAS_DATES ? [{ id: 'latest' as const, label: 'LATEST' }] : []),
   { id: 'picks', label: 'PICKS' },
   { id: 'reading', label: 'READING' },
   { id: 'unread', label: 'UNREAD' },
 ]
 
 export const SORT_MODES: { id: SortMode; label: string }[] = [
-  { id: 'latest', label: 'DATE READ' },
+  /* the order the books stand on the real shelves — the order they are
+     written in books.ts */
+  { id: 'shelf', label: 'SHELF ORDER' },
+  ...(HAS_DATES ? [{ id: 'latest' as const, label: 'DATE READ' }] : []),
   { id: 'rating', label: 'STARS' },
   { id: 'title', label: 'TITLE' },
   { id: 'author', label: 'AUTHOR' },
@@ -111,9 +118,12 @@ export const hasSamples: boolean = books.some((b) => b.sample)
 /* ---------- text helpers ---------- */
 
 const SUFFIX = /^(jr|sr|ii|iii|iv)\.?$/i
+/** A publisher or series standing in for a person keeps its whole name. */
+const ORGANISATION = /\b(corporation|network|press|series)$/i
 
 /** "Le Guin" — last real word of the first author, for compact spines. */
 export function surname(author: string): string {
+  if (ORGANISATION.test(author)) return author
   const parts = author.replace(/[.,]$/, '').split(' ').filter(Boolean)
   while (parts.length > 1 && SUFFIX.test(parts[parts.length - 1])) parts.pop()
   return parts[parts.length - 1] || author
@@ -161,6 +171,7 @@ function haystack(b: Book): string {
     b.year ?? '',
     b.isbn ?? '',
     b.note ?? '',
+    b.review ?? '',
   ]
     .join(' ')
     .toLowerCase()
@@ -198,8 +209,13 @@ function matchesTab(b: Book, tab: ShelfTab): boolean {
   }
 }
 
+/** Position in books.ts = position on the physical shelf. */
+const SHELF_INDEX = new Map(books.map((b, i) => [b.id, i]))
+
 function compare(a: Book, b: Book, sort: SortMode): number {
   switch (sort) {
+    case 'shelf':
+      return (SHELF_INDEX.get(a.id) ?? 0) - (SHELF_INDEX.get(b.id) ?? 0)
     case 'latest':
       return (b.finished ?? '').localeCompare(a.finished ?? '')
     case 'rating':

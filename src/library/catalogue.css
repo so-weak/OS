@@ -675,6 +675,13 @@ html.page-scroll #root {
 .plate-note.empty {
   color: var(--ink-soft);
 }
+.plate-review {
+  margin: 0 0 14px;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink);
+}
 .plate-stars {
   display: flex;
   align-items: center;

@@ -59,18 +59,18 @@ import { rb } from './rbox'
    ===================================================================== */
 
 /** Gap between neighbouring volumes. */
-const GAP = 0.005
+const GAP = 0.002
 /** How far a hovered spine creeps out of the shelf. */
 const PEEK = 0.026
 
 type Shelves = Book[][]
 
-/** Newest reads first, so the top shelf is what you just put down. */
+/** Newest reads first, so the top shelf is what you just put down. Books
+    with no date keep the order they are written in books.ts — which is
+    the order they stand on the real shelves (Array.sort is stable). */
 function shelfOrder(): Book[] {
-  return [...books].sort(
-    (a, b) =>
-      (b.finished ?? '').localeCompare(a.finished ?? '') ||
-      a.title.localeCompare(b.title),
+  return [...books].sort((a, b) =>
+    (b.finished ?? '').localeCompare(a.finished ?? ''),
   )
 }
 
@@ -175,9 +175,11 @@ export default function Bookcase() {
   const spines = useMemo(
     () =>
       fontsReady && open
-        ? new Map<string, CanvasTexture>(books.map((b) => [b.id, makeSpine(b)]))
+        ? new Map<string, CanvasTexture>(
+            slots.map((s) => [s.book.id, makeSpine(s.book)]),
+          )
         : null,
-    [fontsReady, open],
+    [fontsReady, open, slots],
   )
   useEffect(() => {
     if (!spines) return

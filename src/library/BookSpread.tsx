@@ -80,6 +80,11 @@ export default function BookSpread({
                 No note yet — this one is still waiting for a verdict.
               </blockquote>
             )}
+            {book.review?.split(/\n\s*\n/).map((para, i) => (
+              <p key={i} className="plate-review">
+                {para}
+              </p>
+            ))}
 
             <p className="plate-stars">
               <Stars rating={book.rating} />

@@ -44,7 +44,7 @@ const DEFAULTS: Query = {
   shelf: 'all',
   genre: null,
   author: null,
-  sort: 'latest',
+  sort: 'shelf',
 }
 
 /* ---------- the query lives in the URL, so a shelf is shareable ---------- */
@@ -58,7 +58,7 @@ function readQuery(): Query {
     shelf: SHELF_TABS.some((t) => t.id === shelf) ? (shelf as ShelfTab) : 'all',
     genre: p.get('genre'),
     author: p.get('author'),
-    sort: SORT_MODES.some((s) => s.id === sort) ? (sort as SortMode) : 'latest',
+    sort: SORT_MODES.some((s) => s.id === sort) ? (sort as SortMode) : 'shelf',
   }
 }
 
@@ -68,7 +68,7 @@ function writeQuery(q: Query): void {
   if (q.shelf !== 'all') p.set('shelf', q.shelf)
   if (q.genre) p.set('genre', q.genre)
   if (q.author) p.set('author', q.author)
-  if (q.sort !== 'latest') p.set('sort', q.sort)
+  if (q.sort !== 'shelf') p.set('sort', q.sort)
   const search = p.toString()
   const url = window.location.pathname + (search ? `?${search}` : '')
   window.history.replaceState(null, '', url)
@@ -83,12 +83,17 @@ function stats(): { label: string; value: string }[] {
   const avg = rated.length
     ? (rated.reduce((sum, b) => sum + (b.rating ?? 0), 0) / rated.length).toFixed(1)
     : '—'
+  /* "finished this year" only means something once books carry dates;
+     until then the second card counts the favourites instead */
+  const dated = books.some((b) => b.finished)
   return [
     { label: 'volumes', value: String(books.length) },
-    {
-      label: `finished in ${year}`,
-      value: String(books.filter((b) => b.finished?.startsWith(year)).length),
-    },
+    dated
+      ? {
+          label: `finished in ${year}`,
+          value: String(books.filter((b) => b.finished?.startsWith(year)).length),
+        }
+      : { label: 'picks', value: String(books.filter((b) => b.pick).length) },
     { label: 'reading now', value: String(books.filter((b) => b.status === 'reading').length) },
     { label: 'average stars', value: avg },
   ]
