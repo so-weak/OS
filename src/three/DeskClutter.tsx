@@ -19,6 +19,7 @@ import {
   part,
   sharedPlastic,
 } from './tex/electronics'
+import Staged from './Staged'
 
 /* =====================================================================
    The lived-in layer on the desk: a pen cup with a ruler leaning in it, a
@@ -289,7 +290,7 @@ function buildPad() {
   return mergeParts(parts)
 }
 
-export default function DeskClutter() {
+function DeskClutterBody() {
   const cup = useMemo(() => buildCup(), [])
   const cases = useMemo(() => buildCases(), [])
   const box = useMemo(() => buildFloppyBox(), [])
@@ -392,5 +393,14 @@ export default function DeskClutter() {
         </mesh>
       </group>
     </group>
+  )
+}
+
+/* first load: mounted in its own turn of the staged build (stage.ts) */
+export default function DeskClutter() {
+  return (
+    <Staged id="clutter">
+      <DeskClutterBody />
+    </Staged>
   )
 }

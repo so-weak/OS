@@ -31,6 +31,7 @@ import {
   woodBox,
 } from './tex/furniture'
 import { makeCanvas } from './textures'
+import Staged from './Staged'
 
 /* =====================================================================
    Articulated desk lamp — the room's main warm light and an easter
@@ -441,7 +442,7 @@ function makeInnerGlow(): CanvasTexture {
   return t
 }
 
-export default function Lamp() {
+function LampBody() {
   const view = useSystem((s) => s.view)
   const toggleLamp = useRoom((s) => s.toggleLamp)
 
@@ -600,5 +601,14 @@ export default function Lamp() {
         decay={2}
       />
     </group>
+  )
+}
+
+/* first load: mounted in its own turn of the staged build (stage.ts) */
+export default function Lamp() {
+  return (
+    <Staged id="lamp">
+      <LampBody />
+    </Staged>
   )
 }

@@ -43,6 +43,7 @@ import {
   buildWindowFrame,
   glassTexture,
   teakMaps,
+  type WoodMaps,
 } from './tex/window'
 import {
   BLIND_SLATS,
@@ -50,11 +51,13 @@ import {
   beaconPositions,
   makeDayCity,
   makeBoltAtlas,
-  makeDayHigh,
+  makeDayHighPart,
   makeDaySky,
   makeFlashTexture,
   makeGobo,
-  makeNightScene,
+  joinNight,
+  makeNightCity,
+  makeNightSky,
   makeRainBeads,
   makeRainStreaks,
   moonFrame,
@@ -66,6 +69,9 @@ import {
   sunFrame,
   sunPatch,
 } from './windowArt'
+import Staged from './Staged'
+import { useStagedValue } from './stage'
+import { afterReveal } from '../loadProgress'
 
 /* =====================================================================
    The window — the room's one scenery control and the explanation for
@@ -535,33 +541,55 @@ function Traffic({ map }: { map: Texture }) {
   )
 }
 
+/** idle-time slices the day set is painted in after the reveal */
+const DAY_SLICES = 6
+
 function Exterior() {
   const isDay = useRoom((s) => s.isDay)
   // the day sky is repainted at most once an hour
   const hourBucket = useWorld((s) => Math.floor(s.hour))
   const [stage, setStage] = useState(0)
-  // paint the day set in slices a little after the first frames, not at
-  // mount, so the room's opening dolly is not spent on canvases; clicking
-  // the window before then simply builds what is missing on the spot
+  // paint the day set in slices once the room is on screen, in idle time
+  // and one slice per task (the next is asked for only after the last one
+  // committed), so neither the first load nor the opening dolly is spent
+  // on canvases; clicking the window before then simply builds what is
+  // missing on the spot
   useEffect(() => {
-    const ids = [2500, 2900, 3300, 3700].map((ms, i) =>
-      window.setTimeout(() => setStage(i + 1), ms),
-    )
-    return () => ids.forEach((id) => window.clearTimeout(id))
-  }, [])
-  const wantHigh = isDay || stage >= 1
-  const wantFar = isDay || stage >= 2
-  const wantMid = isDay || stage >= 3
-  const wantNear = isDay || stage >= 4
+    if (stage >= DAY_SLICES) return
+    let alive = true
+    afterReveal(() => {
+      if (alive) setStage((n) => Math.max(n, stage + 1))
+    })
+    return () => {
+      alive = false
+    }
+  }, [stage])
+  // one texture or two per slice: the sky gradient and the sun, the
+  // cirrus, the heaps, then the skylines far to near
+  const wantSky = isDay || stage >= 1
+  const wantCirrus = isDay || stage >= 2
+  const wantHeaps = isDay || stage >= 3
+  const wantFar = isDay || stage >= 4
+  const wantMid = isDay || stage >= 5
+  const wantNear = isDay || stage >= 6
 
-  const night = useMemo(() => makeNightScene(), [])
-  const dayHigh = useMemo(() => (wantHigh ? makeDayHigh() : null), [wantHigh])
+  // the night set is on screen from the first frame: built in two turns
+  // of the staged first load (stage.ts)
+  const nightSky = useStagedValue('window.nightSky', () => makeNightSky())
+  const nightCity = useStagedValue('window.nightCity', () => makeNightCity())
+  const night = useMemo(
+    () => (nightSky && nightCity ? joinNight(nightSky, nightCity) : null),
+    [nightSky, nightCity],
+  )
+  const daySun = useMemo(() => (wantSky ? makeDayHighPart('sun') : null), [wantSky])
+  const dayCirrus = useMemo(() => (wantCirrus ? makeDayHighPart('clouds') : null), [wantCirrus])
+  const dayHeaps = useMemo(() => (wantHeaps ? makeDayHighPart('cloudsNear') : null), [wantHeaps])
   const dayFar = useMemo(() => (wantFar ? makeDayCity('far') : null), [wantFar])
   const dayMid = useMemo(() => (wantMid ? makeDayCity('mid') : null), [wantMid])
   const dayNear = useMemo(() => (wantNear ? makeDayCity('near') : null), [wantNear])
   const daySky = useMemo(
-    () => (wantHigh ? makeDaySky(hourBucket + 0.5) : null),
-    [wantHigh, hourBucket],
+    () => (wantSky ? makeDaySky(hourBucket + 0.5) : null),
+    [wantSky, hourBucket],
   )
   const flashTex = useMemo(() => makeFlashTexture(), [])
   const boltTex = useMemo(() => makeBoltAtlas(), [])
@@ -582,9 +610,9 @@ function Exterior() {
   }, [])
   const unit = useMemo(() => new PlaneGeometry(1, 1), [])
 
+  useEffect(() => () => night?.dispose(), [night])
   useEffect(
     () => () => {
-      night.dispose()
       flashTex.dispose()
       boltTex.dispose()
       dot.dispose()
@@ -592,9 +620,11 @@ function Exterior() {
       beaconGeo.dispose()
       unit.dispose()
     },
-    [night, flashTex, boltTex, dot, starGeo, beaconGeo, unit],
+    [flashTex, boltTex, dot, starGeo, beaconGeo, unit],
   )
-  useEffect(() => () => dayHigh?.dispose(), [dayHigh])
+  useEffect(() => () => daySun?.dispose(), [daySun])
+  useEffect(() => () => dayCirrus?.dispose(), [dayCirrus])
+  useEffect(() => () => dayHeaps?.dispose(), [dayHeaps])
   useEffect(() => () => dayFar?.dispose(), [dayFar])
   useEffect(() => () => dayMid?.dispose(), [dayMid])
   useEffect(() => () => dayNear?.dispose(), [dayNear])
@@ -604,6 +634,7 @@ function Exterior() {
   const sunAt = useMemo(() => placeLayer(LAYER.moon.z, sunFrame(hourNow)), [hourNow])
   const sunWarm = sunPatch(hourNow).warm
 
+  if (!night) return null
   return (
     <group>
       {/* ---- night ---- */}
@@ -621,14 +652,14 @@ function Exterior() {
       <Layer kind="nNear" map={night.near} place={PLACE.near} order={RO.nNear} unit={unit} />
 
       {/* ---- day (built in slices, or on the spot when first wanted) ---- */}
-      {daySky && dayHigh && (
+      {daySky && daySun && dayCirrus && dayHeaps && (
         <>
           <Layer kind="dSky" map={daySky} place={PLACE.sky} order={RO.dSky} unit={unit} dz={0.01} />
-          <Layer kind="dSun" map={dayHigh.sun} place={sunAt} order={RO.dSun} unit={unit} additive warm={sunWarm} />
-          <Layer kind="dClouds" map={dayHigh.clouds} place={PLACE.clouds} order={RO.dClouds} unit={unit} />
+          <Layer kind="dSun" map={daySun} place={sunAt} order={RO.dSun} unit={unit} additive warm={sunWarm} />
+          <Layer kind="dClouds" map={dayCirrus} place={PLACE.clouds} order={RO.dClouds} unit={unit} />
           <Layer
             kind="dCloudsNear"
-            map={dayHigh.cloudsNear}
+            map={dayHeaps}
             place={PLACE.cloudsNear}
             order={RO.dCloudsNear}
             unit={unit}
@@ -646,14 +677,13 @@ function Exterior() {
    The unit
    ===================================================================== */
 
-export default function RoomWindow() {
+function RoomWindowBody({ wood }: { wood: WoodMaps }) {
   const view = useSystem((s) => s.view)
   const isDay = useRoom((s) => s.isDay)
   const toggleDay = useRoom((s) => s.toggleDay)
   const blinds = useWorld((s) => s.blinds)
 
   const frame = useMemo(() => buildWindowFrame(), [])
-  const wood = useMemo(() => teakMaps(), [])
   const glassTex = useMemo(() => glassTexture(), [])
   const rainTex = useMemo(() => makeRainStreaks(), [])
   const beadTex = useMemo(() => makeRainBeads(), [])
@@ -954,7 +984,9 @@ export default function RoomWindow() {
   const glassZ = -WINDOW.glassDepth
   return (
     <>
-      <Exterior />
+      <Staged id="window.exterior">
+        <Exterior />
+      </Staged>
       <group position={[WINDOW.x, WINDOW.y, WINDOW.wallZ]}>
         <Clickable
           enabled={view === 'room'}
@@ -1103,4 +1135,20 @@ export default function RoomWindow() {
       </group>
     </>
   )
+}
+
+/* first load: mounted in its own turn of the staged build (stage.ts) */
+export default function RoomWindow() {
+  return (
+    <Staged id="window">
+      <RoomWindowTeak />
+    </Staged>
+  )
+}
+
+/** the teak maps are the window's heaviest build: their own turn of the
+    staged first load (stage.ts), before the unit mounts with them */
+function RoomWindowTeak() {
+  const wood = useStagedValue('window.teak', () => teakMaps())
+  return wood ? <RoomWindowBody wood={wood} /> : null
 }

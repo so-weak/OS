@@ -26,6 +26,7 @@ import RoomTooltip from './Tooltip'
 import Tower from './Tower'
 import TrashGame from './TrashGame'
 import RoomWindow from './Window'
+import SceneReady from './SceneReady'
 import WorldFrame from './WorldFrame'
 import { INTRO_CAM_POS, P } from './layout'
 import { useRoom } from './roomState'
@@ -73,7 +74,10 @@ export default function Scene() {
     <>
       <Canvas
         shadows="percentage"
-        dpr={PINNED_DPR || [1, 1.25]}
+        // the display's own ratio up to 2 (a 1.25 cap stretched every
+        // label 1.6x on Retina); AdaptiveQuality picks the live rung
+        // before the first drawn frame and walks it under load
+        dpr={PINNED_DPR || [1, 2]}
         camera={{
           fov: CAM_FOV,
           near: 0.04,
@@ -141,6 +145,8 @@ export default function Scene() {
         <RainAudio />
         {/* last, so its frame callback sees every prop's motion this frame */}
         <ShadowScheduler />
+        {/* holds the first draw until shaders + textures are warm, then reveals */}
+        <SceneReady />
       </Canvas>
       <RoomTooltip />
       <LibraryHud />

@@ -66,6 +66,7 @@
   z-index: 100;
 }
 .loader-box {
+  position: relative; /* above the backdrop */
   font-size: 22px;
   letter-spacing: 1px;
   display: grid;
@@ -78,6 +79,7 @@
   border: 1px solid #cfe8df;
   padding: 2px;
 }
+/* the catalogue's veil: an indeterminate marching block */
 .loader-fill {
   height: 100%;
   width: 30%;
@@ -95,6 +97,83 @@
   to {
     transform: translateX(24px);
   }
+}
+
+/* ---------- the room's veil (App.tsx RoomVeil) ----------
+   Honest bar: the stripes run the full track and march on the
+   compositor (alive even while the main thread builds the room); a
+   solid cover on the right is scaled down to the real load fraction,
+   so only the filled length reports progress. Both are transforms —
+   they keep moving through a long task. */
+.loader-track {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  background: #060708;
+}
+.loader-stripes {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -24px;
+  right: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    #48dab6 0 8px,
+    transparent 8px 12px
+  );
+  animation: loader-march 1.1s linear infinite;
+  will-change: transform;
+}
+.loader-cover {
+  position: absolute;
+  inset: 0;
+  background: #060708;
+  transform-origin: right center;
+  transition: transform 700ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  will-change: transform;
+}
+.loader-stage {
+  opacity: 0.72;
+}
+.loader-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 500ms ease-out;
+  pointer-events: none;
+  user-select: none;
+}
+.loader-backdrop.is-in {
+  opacity: 1;
+}
+/* keeps the type legible over the brightest part of the desk */
+.room-veil::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: radial-gradient(
+    ellipse 38% 30% at 50% 50%,
+    rgba(6, 7, 8, 0.62),
+    rgba(6, 7, 8, 0) 100%
+  );
+  pointer-events: none;
+}
+.room-veil .loader-box {
+  z-index: 2;
+}
+/* the reveal: the room is already drawn underneath; the veil fades
+   off it and stops taking clicks the moment it starts to go */
+.room-veil {
+  transition: opacity 650ms ease-out;
+}
+.room-veil.is-leaving {
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* ---------- the stacks (3D library) ----------
@@ -152,7 +231,15 @@
     animation: none;
     opacity: 0.85;
   }
-  .loader-fill {
+  .loader-fill,
+  .loader-stripes {
     animation: none;
+  }
+  .loader-cover {
+    transition-duration: 150ms;
+  }
+  .room-veil,
+  .loader-backdrop {
+    transition-duration: 150ms;
   }
 }

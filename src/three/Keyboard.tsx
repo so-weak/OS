@@ -50,6 +50,8 @@ import {
   type RingSpec,
   type V3,
 } from './tex/electronics'
+import Staged from './Staged'
+import { useStagedValue } from './stage'
 
 /* =====================================================================
    A beige full-size keyboard, 101 keys at real 19 mm pitch. Every keycap
@@ -494,13 +496,15 @@ function buildBoot(): BufferGeometry {
 
 const LED_X = [0.1455, 0.168, 0.1905]
 
-export default function Keyboard() {
+function KeyboardBody() {
   const powered = useSystem((s) => s.power !== 'off')
   const specs = useMemo(() => planKeys(), [])
   const plastic = useMemo(() => sharedPlastic(), [])
   const capSet = useMemo(() => keycapSet(11, 256, 0.09), [])
   const atlas = useMemo(() => buildAtlas(specs), [specs])
-  const caseGeo = useMemo(() => buildCase(), [])
+  // the case is the heaviest geometry here: its own turn of the staged
+  // first load (stage.ts)
+  const caseGeo = useStagedValue('keyboard.case', buildCase)
   const bootGeo = useMemo(() => buildBoot(), [])
   const badge = useMemo(
     () =>
@@ -630,13 +634,13 @@ export default function Keyboard() {
       plastic.dispose()
       capSet.dispose()
       atlas.tex.dispose()
-      caseGeo.dispose()
       bootGeo.dispose()
       badge.dispose()
       lockIcons.dispose()
     },
-    [plastic, capSet, atlas, caseGeo, bootGeo, badge, lockIcons],
+    [plastic, capSet, atlas, bootGeo, badge, lockIcons],
   )
+  useEffect(() => () => caseGeo?.dispose(), [caseGeo])
 
   /* useFrame mutates the instances through these ref aliases */
   const capsRef = useRef<InstancedMesh>(null)
@@ -734,6 +738,7 @@ export default function Keyboard() {
   const ledMatRef = useRef(ledMat)
   useEffect(() => () => ledMat.dispose(), [ledMat])
 
+  if (!caseGeo) return null
   return (
     <group position={KBD_POS} rotation-y={KBD_YAW}>
       {/* the rear feet lift the back: tilt about the front bottom edge */}
@@ -785,5 +790,14 @@ export default function Keyboard() {
         <meshStandardMaterial vertexColors roughness={0.7} />
       </mesh>
     </group>
+  )
+}
+
+/* first load: mounted in its own turn of the staged build (stage.ts) */
+export default function Keyboard() {
+  return (
+    <Staged id="keyboard">
+      <KeyboardBody />
+    </Staged>
   )
 }

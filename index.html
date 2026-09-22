@@ -14,6 +14,15 @@
       content="An interactive 3D retro computer. Power it on to explore my work in GenAI, ML and full-stack engineering."
     />
     <title>Soubhik Ghosh — SoubhikOS</title>
+    <!-- the loader veil's face: fetch it with the JS, not after the first
+         paint, so the name and the bar never flash in a fallback font -->
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      crossorigin
+      href="/node_modules/@fontsource/vt323/files/vt323-latin-400-normal.woff2"
+    />
   </head>
   <body>
     <div id="root"></div>

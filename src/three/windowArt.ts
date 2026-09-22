@@ -1522,15 +1522,35 @@ export interface NightScene {
 }
 
 export function makeNightScene(age = moonAge()): NightScene {
+  return joinNight(makeNightSky(age), makeNightCity())
+}
+
+/** The night set in two halves, so a staged first load can paint them
+    in separate turns: the sky (gradient, clouds, moon)… */
+export function makeNightSky(age = moonAge()): Pick<NightScene, 'sky' | 'clouds' | 'moon'> {
   const sky = gradientTile(NIGHT_SKY, 5)
   const clouds = layerTexture(
     paintClouds({ f: LAYER.clouds.f, pxU: 115, seed: 71, kind: 'bands', night: true }),
   )
   const moon = makeMoonTexture(age)
+  return { sky, clouds, moon }
+}
+
+/** …and the city (three skylines and the bokeh between them). */
+export function makeNightCity(): Pick<NightScene, 'far' | 'mid' | 'bokeh' | 'near'> {
   const far = layerTexture(paintCityLayer('far', true))
   const mid = layerTexture(paintCityLayer('mid', true))
   const bokeh = makeBokeh()
   const near = layerTexture(paintCityLayer('near', true))
+  return { far, mid, bokeh, near }
+}
+
+export function joinNight(
+  a: Pick<NightScene, 'sky' | 'clouds' | 'moon'>,
+  b: Pick<NightScene, 'far' | 'mid' | 'bokeh' | 'near'>,
+): NightScene {
+  const { sky, clouds, moon } = a
+  const { far, mid, bokeh, near } = b
   return {
     sky,
     clouds,
@@ -1742,6 +1762,14 @@ export function makeDayHigh(): DayHigh {
       for (const t of [clouds, cloudsNear, sun]) t.dispose()
     },
   }
+}
+
+/** makeDayHigh one texture at a time, so that after the reveal each piece
+    of the day set gets its own idle slot. Built together, the two cloud
+    paints made one task of 170–480 ms on a 4x-throttled CPU. */
+export function makeDayHighPart(part: 'clouds' | 'cloudsNear' | 'sun'): CanvasTexture {
+  if (part === 'sun') return makeSunTexture()
+  return makeDayClouds(part === 'clouds' ? 'high' : 'near')
 }
 
 /** One of the three awake skylines. */

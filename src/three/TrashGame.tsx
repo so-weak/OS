@@ -33,6 +33,7 @@ import {
   mergeParts,
   noise3,
 } from './tex/furniture'
+import Staged from './Staged'
 
 /* =====================================================================
    Wastepaper basketball. Three crumpled spec sheets sit on the desk;
@@ -495,7 +496,7 @@ function stepGame(
   return changed
 }
 
-export default function TrashGame() {
+function TrashGameBody() {
   const view = useSystem((s) => s.view)
   const [score, setScore] = useState({ sunk: 0, missed: 0, streak: 0 })
 
@@ -671,5 +672,14 @@ export default function TrashGame() {
         />
       </points>
     </group>
+  )
+}
+
+/* first load: mounted in its own turn of the staged build (stage.ts) */
+export default function TrashGame() {
+  return (
+    <Staged id="trash">
+      <TrashGameBody />
+    </Staged>
   )
 }

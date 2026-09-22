@@ -22,6 +22,7 @@ import {
   smoothstep,
   sweep,
 } from './tex/furniture'
+import Staged from './Staged'
 
 /* =====================================================================
    The debugging duck, perched on top of the CRT. Clicking it squashes,
@@ -164,7 +165,7 @@ function duckLabel(clicks: number, found: readonly string[]): string {
   return `the golden debugger · ${left[clicks % left.length].riddle}`
 }
 
-export default function Duck() {
+function DuckBody() {
   const view = useSystem((s) => s.view)
   const clickDuck = useEggs((s) => s.clickDuck)
   const clicks = useEggs((s) => s.duckClicks)
@@ -276,5 +277,14 @@ export default function Duck() {
         </group>
       </Clickable>
     </group>
+  )
+}
+
+/* first load: mounted in its own turn of the staged build (stage.ts) */
+export default function Duck() {
+  return (
+    <Staged id="duck">
+      <DuckBody />
+    </Staged>
   )
 }

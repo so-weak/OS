@@ -9,6 +9,7 @@ import {
   Matrix4,
   MeshStandardMaterial,
   Quaternion,
+  ShaderChunk,
   Vector3,
   type BufferGeometry,
   type CanvasTexture,
@@ -48,6 +49,7 @@ import { makeSoftCircle, makeWood } from './textures'
 import { useFontsReady } from '../useFontsReady'
 import { LEDGER, useWorld } from '../world'
 import { rb } from './rbox'
+import Staged from './Staged'
 
 /* ---------------------------------------------------------------------
    Shared materials / geometry helpers — the whole point is that 113
@@ -272,7 +274,7 @@ function rowEnds(shelves: Shelves): { x: number; y: number }[] {
   return ends
 }
 
-export default function Bookcase() {
+function BookcaseBody() {
   const view = useSystem((s) => s.view)
   const open = useLibrary((s) => s.open)
   const selectedId = useLibrary((s) => s.selectedId)
@@ -298,13 +300,21 @@ export default function Bookcase() {
     return () => atlas.dispose()
   }, [atlas])
 
-  const spineMaterial = useMemo(
-    () =>
-      atlas
-        ? new MeshStandardMaterial({ color: '#ffffff', map: atlas.tex, roughness: 0.86 })
-        : null,
-    [atlas],
-  )
+  const spineMaterial = useMemo(() => {
+    if (!atlas) return null
+    const m = new MeshStandardMaterial({ color: '#ffffff', map: atlas.tex, roughness: 0.86 })
+    // The atlas is minified ~3-5x at the shelf, so plain trilinear
+    // sampling lands on mip 1.6-2.3 and the small titles go soft at 1x.
+    // Bias one level sharper: the mips still stop the strokes shimmering.
+    m.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <map_fragment>',
+        ShaderChunk.map_fragment.replace('texture2D( map, vMapUv )', 'texture2D( map, vMapUv, -1.5 )'),
+      )
+    }
+    m.customProgramCacheKey = () => 'spine-lod-bias'
+    return m
+  }, [atlas])
   useEffect(() => {
     if (!spineMaterial) return
     return () => spineMaterial.dispose()
@@ -977,5 +987,14 @@ function DustPuff() {
         </sprite>
       ))}
     </>
+  )
+}
+
+/* first load: mounted in its own turn of the staged build (stage.ts) */
+export default function Bookcase() {
+  return (
+    <Staged id="bookcase">
+      <BookcaseBody />
+    </Staged>
   )
 }
