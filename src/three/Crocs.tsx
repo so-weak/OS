@@ -6,6 +6,7 @@ import {
   ExtrudeGeometry,
   Float32BufferAttribute,
   Matrix4,
+  MeshStandardMaterial,
   Quaternion,
   Shape,
   SphereGeometry,
@@ -17,15 +18,26 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 /* =====================================================================
    A pair of Crocs, kicked off under the desk.
 
-   Lime-green clogs: a thick moulded sole with a rolled lip, a domed toe
-   box with a ring of ventilation holes, an open collar with a darker
-   footbed, the heel strap swung back over the heel, and three jibbitz
-   charms (a star, a heart and a disc) in the toe-box holes.
+   White clogs with wild pink and purple swirls, like marbled tie-dye
+   moulded plastic: a thick moulded sole with a rolled lip, a domed toe
+   box with a ring of ventilation holes, an open collar with a shaded
+   cream footbed, the heel strap swung back over the heel, and three
+   jibbitz charms (a yellow star, a teal heart, an orange disc) in the
+   toe-box holes.
 
-   The whole pair is ONE merged geometry with vertex colours: a single
+   The whole pair is ONE merged geometry and ONE material: a single
    draw call, nothing coplanar (the flip-flops they replace glitched
    against the contact-shadow plane at y = 0.008), so the soles rest
    at 0.0088 — just above it — and the mesh only casts shadows.
+
+   The swirls are not a texture (no UV seams to hide): every vertex
+   carries its shoe-local position and a swirl mask (1 on the shell,
+   ~0.4 in the footbed, 0 on holes and charms), and the material's
+   fragment shader (onBeforeCompile) paints pink and purple ribbons
+   over the white base from a 3-D domain-warped noise, with rotational
+   twirls so the ribbons curl into real spiral arms. The pattern wraps
+   the sole, upper and strap as one piece, and each shoe of the pair is
+   seeded differently so they are not a copy.
 
    Shoe local frame: toe toward +x, up +y, width along z, sole bottom y=0.
    ===================================================================== */
@@ -36,10 +48,22 @@ const BF = 0.056 // half width across the toe box
 const BR = 0.046 // half width at the heel
 const TS = 0.026 // sole thickness
 
-const GREEN = new Color('#86dd3a')
-const GREEN_SOLE = new Color('#6cc12a')
-const GREEN_INNER = new Color('#3f7a1c')
-const HOLE = new Color('#0e1a08')
+// the moulded plastic: one white for sole, upper and strap (so no seam),
+// shaded to cream where the foot sits, near-black holes
+const WHITE = new Color('#faf9f7')
+const FOOT_SHADE = new Color('#d8d2c6')
+const HOLE = new Color('#1b1422')
+
+// the swirl pigments: pink runs candy -> hot magenta, purple violet -> grape
+const PINK_CANDY = '#ff8fd0'
+const PINK_HOT = '#f81ea0'
+const PURPLE_VIOLET = '#9d5bff'
+const PURPLE_GRAPE = '#5a20ab'
+
+// jibbitz: chosen to pop against pink, purple and white
+const CHARM_STAR = '#ffc61a'
+const CHARM_HEART = '#19d3c5'
+const CHARM_DISC = '#ff8a1c'
 
 const smooth = (a: number, b: number, x: number): number => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)))
@@ -86,12 +110,14 @@ function inner(x: number, u: number): number {
   return 1 - smooth(0.5, 0.82, d)
 }
 
-/** Strip the attributes the merge does not need and pin the colour. */
-function tidy(g: BufferGeometry, color: Color | null): BufferGeometry {
+/** Strip the attributes the merge does not need, pin the colour and the
+    swirl mask (1 = fully swirled shell, 0 = plain colour: holes, charms).
+    Every part must leave here with the same attribute set, non-indexed. */
+function tidy(g: BufferGeometry, color: Color | null, mask = 1): BufferGeometry {
   let out = g.index ? g.toNonIndexed() : g
   out.deleteAttribute('uv')
+  const n = out.getAttribute('position').count
   if (color) {
-    const n = out.getAttribute('position').count
     const arr = new Float32Array(n * 3)
     for (let i = 0; i < n; i++) {
       arr[i * 3] = color.r
@@ -99,6 +125,9 @@ function tidy(g: BufferGeometry, color: Color | null): BufferGeometry {
       arr[i * 3 + 2] = color.b
     }
     out.setAttribute('color', new Float32BufferAttribute(arr, 3))
+  }
+  if (!out.getAttribute('aMask')) {
+    out.setAttribute('aMask', new Float32BufferAttribute(new Float32Array(n).fill(mask), 1))
   }
   if (out === g) out = g.clone()
   return out
@@ -125,16 +154,17 @@ function soleGeometry(): BufferGeometry {
   })
   g.rotateX(-Math.PI / 2)
   g.translate(0, 0.003, 0)
-  return tidy(g, GREEN_SOLE)
+  return tidy(g, WHITE)
 }
 
 /** The upper: a lofted height field over the foot outline, with the
-    foot opening carved into it and the footbed darkened. */
+    foot opening carved into it, the footbed shaded cream and its swirl paler. */
 function upperGeometry(): BufferGeometry {
   const NX = 56
   const NZ = 28
   const pos: number[] = []
   const col: number[] = []
+  const mask: number[] = []
   const tmp = new Color()
   for (let i = 0; i <= NX; i++) {
     const x = -LR + ((LR + LF) * i) / NX
@@ -142,8 +172,10 @@ function upperGeometry(): BufferGeometry {
     for (let j = 0; j <= NZ; j++) {
       const u = -1 + (2 * j) / NZ
       pos.push(x, TS + height(x, u), u * w)
-      tmp.copy(GREEN).lerp(GREEN_INNER, inner(x, u))
+      const k = inner(x, u)
+      tmp.copy(WHITE).lerp(FOOT_SHADE, k)
       col.push(tmp.r, tmp.g, tmp.b)
+      mask.push(1 - 0.6 * k)
     }
   }
   const idx: number[] = []
@@ -159,6 +191,7 @@ function upperGeometry(): BufferGeometry {
   const g = new BufferGeometry()
   g.setAttribute('position', new Float32BufferAttribute(pos, 3))
   g.setAttribute('color', new Float32BufferAttribute(col, 3))
+  g.setAttribute('aMask', new Float32BufferAttribute(mask, 1))
   g.setIndex(idx)
   g.computeVertexNormals()
   return tidy(g, null)
@@ -222,7 +255,7 @@ function shoeGeometry(side: 1 | -1): BufferGeometry {
     if (d < 1.25) continue // never inside the opening
     const g = new SphereGeometry(0.0062, 8, 6)
     g.scale(1, 1, 0.3)
-    parts.push(tidy(onSurface(g, x, u, -0.0004), HOLE))
+    parts.push(tidy(onSurface(g, x, u, -0.0004), HOLE, 0))
   }
 
   // jibbitz charms
@@ -230,11 +263,11 @@ function shoeGeometry(side: 1 | -1): BufferGeometry {
     const g = shape
       ? new ExtrudeGeometry(shape, { depth: 0.004, bevelEnabled: false, curveSegments: 6 })
       : new CylinderGeometry(0.0064, 0.0064, 0.004, 14).rotateX(Math.PI / 2)
-    return tidy(onSurface(g, x, u * side, 0.0012), new Color(color))
+    return tidy(onSurface(g, x, u * side, 0.0012), new Color(color), 0)
   }
-  parts.push(charm(starShape(), '#ffd23f', 0.085, -0.3))
-  parts.push(charm(heartShape(), '#ff4fa3', 0.108, 0))
-  parts.push(charm(null, '#35a7ff', 0.13, 0.28))
+  parts.push(charm(starShape(), CHARM_STAR, 0.085, -0.3))
+  parts.push(charm(heartShape(), CHARM_HEART, 0.108, 0))
+  parts.push(charm(null, CHARM_DISC, 0.13, 0.28))
 
   // the heel strap, swung back over the heel
   const strap = new TorusGeometry(0.041, 0.0042, 6, 24, Math.PI)
@@ -242,10 +275,22 @@ function shoeGeometry(side: 1 | -1): BufferGeometry {
   strap.scale(2.6, 1, 1)
   strap.rotateZ(1.2)
   strap.translate(-0.055, TS + 0.026, 0)
-  parts.push(tidy(strap, GREEN))
+  parts.push(tidy(strap, WHITE))
 
   const merged = mergeGeometries(parts, false)
   parts.forEach((p) => p.dispose())
+
+  // the swirl's domain: the shoe-local position (before the pair's kicked-off
+  // transforms) and a seed so the two shoes get different swirls
+  const pos = merged.getAttribute('position')
+  const sp = new Float32Array(pos.count * 4)
+  for (let i = 0; i < pos.count; i++) {
+    sp[i * 4] = pos.getX(i)
+    sp[i * 4 + 1] = pos.getY(i)
+    sp[i * 4 + 2] = pos.getZ(i)
+    sp[i * 4 + 3] = side === 1 ? 0 : 1
+  }
+  merged.setAttribute('aSP', new Float32BufferAttribute(sp, 4))
   return merged
 }
 
@@ -265,12 +310,142 @@ function pairGeometry(): BufferGeometry {
   return merged
 }
 
+/* ---------------------------------------------------------------------
+   The swirl: a fragment-shader function of the shoe-local position.
+
+   Two vortices and a soft 3-D domain warp curl the space the pattern is
+   read in, so straight noise contours shear into spiral arms. Two
+   independent warped fields give the ribbons: one field's contour lines
+   are pink (candy to hot magenta), the other's are purple (violet to
+   deep grape); a wide ribbon and a thin accent ribbon per field. Most of
+   the surface stays the white base. Purple is laid over pink, so where
+   they cross they marble into each other. fwidth() keeps thin edges
+   antialiased. Gradient noise (not value noise) so no grid shows.
+   --------------------------------------------------------------------- */
+const v3 = (hex: string): string => {
+  const c = new Color(hex) // linear working space, like the vertex colours
+  return `vec3(${c.r.toFixed(4)}, ${c.g.toFixed(4)}, ${c.b.toFixed(4)})`
+}
+
+const SWIRL_GLSL = /* glsl */ `
+varying vec3 vSP;
+varying float vSeed;
+varying float vMask;
+
+const vec3 PINK_CANDY = ${v3(PINK_CANDY)};
+const vec3 PINK_HOT = ${v3(PINK_HOT)};
+const vec3 PURPLE_VIOLET = ${v3(PURPLE_VIOLET)};
+const vec3 PURPLE_GRAPE = ${v3(PURPLE_GRAPE)};
+
+vec3 chash(vec3 p3) {
+  p3 = fract(p3 * vec3(0.1031, 0.1030, 0.0973));
+  p3 += dot(p3, p3.yxz + 33.33);
+  return -1.0 + 2.0 * fract((p3.xxy + p3.yxx) * p3.zyx);
+}
+
+// 3-D gradient noise, quintic-smoothed, about -0.9..0.9
+float cnoise(vec3 x) {
+  vec3 i = floor(x);
+  vec3 f = fract(x);
+  vec3 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+  return mix(
+    mix(mix(dot(chash(i), f),
+            dot(chash(i + vec3(1.0, 0.0, 0.0)), f - vec3(1.0, 0.0, 0.0)), u.x),
+        mix(dot(chash(i + vec3(0.0, 1.0, 0.0)), f - vec3(0.0, 1.0, 0.0)),
+            dot(chash(i + vec3(1.0, 1.0, 0.0)), f - vec3(1.0, 1.0, 0.0)), u.x), u.y),
+    mix(mix(dot(chash(i + vec3(0.0, 0.0, 1.0)), f - vec3(0.0, 0.0, 1.0)),
+            dot(chash(i + vec3(1.0, 0.0, 1.0)), f - vec3(1.0, 0.0, 1.0)), u.x),
+        mix(dot(chash(i + vec3(0.0, 1.0, 1.0)), f - vec3(0.0, 1.0, 1.0)),
+            dot(chash(i + vec3(1.0, 1.0, 1.0)), f - vec3(1.0, 1.0, 1.0)), u.x), u.y), u.z);
+}
+
+// rotate p about the axis through c by turn * a gaussian falloff: a vortex
+vec3 cspin(vec3 p, vec3 c, vec3 ax, float turn, float rad) {
+  vec3 d = p - c;
+  float a = turn * exp(-dot(d, d) / (rad * rad));
+  float co = cos(a);
+  float si = sin(a);
+  return c + d * co + cross(ax, d) * si + ax * dot(ax, d) * (1.0 - co);
+}
+
+// a ribbon along the contour f = c: solid core, soft antialiased edge.
+// returns the coverage; core is 1 on the centre line, 0 at the rim. A ribbon
+// squeezed below a pixel by the swirl fades out instead of shimmering.
+float cribbon(float f, float c, float w, out float core) {
+  float d = abs(f - c);
+  float px = fwidth(f) * 0.75;
+  core = 1.0 - smoothstep(0.0, w, d);
+  return (1.0 - smoothstep(w * 0.5, w + px, d)) * min(1.0, 2.0 * w / (px * 2.0 + 1e-4));
+}
+
+vec3 crocSwirl(vec3 base, vec3 sp, float seed, float mask) {
+  float s = step(0.5, seed);
+  vec3 p = sp * 17.0;                     // ~6 cm per noise cell
+  p.z *= 1.0 - 2.0 * s;                   // the second shoe is mirrored...
+  p = cspin(p, vec3( 1.35, 0.70,  0.25), normalize(vec3( 0.2, 0.3, 1.0)),  4.4, 1.2);
+  p = cspin(p, vec3(-0.80, 0.60, -0.30), normalize(vec3(-0.3, 1.0, 0.5)), -3.8, 1.1);
+  p = cspin(p, vec3( 0.30, 1.15,  0.00), normalize(vec3( 1.0, 0.3, 0.2)),  3.2, 0.9);
+  p += s * vec3(7.3, -4.1, 11.9);         // ...and seeded elsewhere in the noise
+  p += 0.95 * vec3(cnoise(p * 0.8 + 3.1), cnoise(p * 0.8 + 17.7), cnoise(p * 0.8 + 41.3));
+  p += 0.35 * vec3(cnoise(p * 1.9 + 5.2), cnoise(p * 1.9 + 23.9), cnoise(p * 1.9 + 61.1));
+
+  float a = cnoise(p * 0.9) + 0.40 * cnoise(p * 2.1 + 7.0);
+  float b = cnoise(p * 0.8 + 11.3) + 0.40 * cnoise(p * 1.9 + 19.0);
+  // ribbon thickness wanders along each ribbon
+  float wa = 0.5 + 0.5 * smoothstep(-0.3, 0.3, cnoise(p * 0.7 + 4.0));
+  float wb = 0.5 + 0.5 * smoothstep(-0.3, 0.3, cnoise(p * 0.6 + 14.0));
+
+  float ka, kb, kc, kd;
+  float pc = max(cribbon(a, -0.02, 0.05 + 0.065 * wa, ka), 0.9 * cribbon(a, 0.46, 0.034, kb));
+  float vc = max(cribbon(b, 0.05, 0.036 + 0.05 * wb, kc), 0.9 * cribbon(b, -0.46, 0.028, kd));
+  float pcore = max(ka, kb);
+  float vcore = max(kc, kd);
+
+  // each patch of ribbon leans candy or hot (violet or grape); the core runs deeper
+  vec3 pink = mix(PINK_CANDY, PINK_HOT, smoothstep(-0.25, 0.2, cnoise(p * 0.55 + 2.0)) * (0.5 + 0.5 * pcore));
+  vec3 grape = mix(PURPLE_VIOLET, PURPLE_GRAPE, smoothstep(-0.25, 0.2, cnoise(p * 0.5 + 8.0)) * (0.5 + 0.5 * vcore));
+
+  vec3 c = mix(base, pink, pc);
+  c = mix(c, grape, vc);
+  return mix(base, c, mask);
+}
+`
+
+/** One shared plastic: satin gloss, vertex-colour base, swirl in the shader. */
+function crocsMaterial(): MeshStandardMaterial {
+  const m = new MeshStandardMaterial({ vertexColors: true, roughness: 0.4 })
+  m.customProgramCacheKey = () => 'crocs-swirl-4'
+  m.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace(
+        '#include <common>',
+        () =>
+          '#include <common>\nattribute vec4 aSP;\nattribute float aMask;\nvarying vec3 vSP;\nvarying float vSeed;\nvarying float vMask;',
+      )
+      .replace(
+        '#include <begin_vertex>',
+        () => '#include <begin_vertex>\nvSP = aSP.xyz;\nvSeed = aSP.w;\nvMask = aMask;',
+      )
+    sh.fragmentShader = sh.fragmentShader
+      .replace('void main() {', () => `${SWIRL_GLSL}\nvoid main() {`)
+      .replace(
+        '#include <color_fragment>',
+        () =>
+          '#include <color_fragment>\n\tdiffuseColor.rgb = crocSwirl(diffuseColor.rgb, vSP, vSeed, vMask);',
+      )
+  }
+  return m
+}
+
 export default function Crocs({ position }: { position: [number, number, number] }) {
   const g = useMemo(() => pairGeometry(), [])
-  useEffect(() => () => g.dispose(), [g])
-  return (
-    <mesh geometry={g} position={[position[0], 0.0088, position[2]]} castShadow>
-      <meshStandardMaterial vertexColors roughness={0.5} />
-    </mesh>
+  const mat = useMemo(() => crocsMaterial(), [])
+  useEffect(
+    () => () => {
+      g.dispose()
+      mat.dispose()
+    },
+    [g, mat],
   )
+  return <mesh geometry={g} material={mat} position={[position[0], 0.0088, position[2]]} castShadow />
 }
