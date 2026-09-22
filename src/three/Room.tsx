@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react'
 import { useThree } from '@react-three/fiber'
 import { ContactShadows } from '@react-three/drei'
-import { AdditiveBlending, DoubleSide, type CanvasTexture } from 'three'
+import { AdditiveBlending, DoubleSide, MeshStandardMaterial, Vector2, type CanvasTexture } from 'three'
 import { awards, experience } from '../data/resume'
 import { useSystem } from '../os/store'
 import { playClick } from '../os/sound'
@@ -11,11 +11,11 @@ import Clickable from './Clickable'
 import { P } from './layout'
 import {
   disposeSurface,
-  makeFeatheredRect,
   makeFloppyPoster,
   makeLabel,
   makeRocketPoster,
   repeatSurface,
+  sharedWallShadowBlob,
 } from './textures'
 import { brushedMetalMaps, fabricMaps, plasticMaps, type PbrMaps } from './tex/noise'
 import {
@@ -83,15 +83,18 @@ export default function Room() {
   }, [aniso])
   const sideL = useMemo(() => bakeSideWall('#272b35', 12, 'left', aniso), [aniso])
   const sideR = useMemo(() => bakeSideWall('#282c36', 14, 'right', aniso), [aniso])
-  const grime = useMemo(() => makeWallGrime(5, 1024, 576, aniso), [aniso])
-  const wear = useMemo(() => makeFloorWear(8, 768, 652, aniso), [aniso])
+  // soft decal overlays: low-frequency, blurred by design, so a smaller
+  // canvas costs nothing visible (was 1024x576 / 768x652)
+  const grime = useMemo(() => makeWallGrime(5, 640, 360, aniso), [aniso])
+  const wear = useMemo(() => makeFloorWear(8, 512, 435, aniso), [aniso])
   const rug = useMemo(() => makeRugMaps(3, aniso), [aniso])
   const rugMesh = useMemo(() => rugGeo(), [])
   const fringe = useMemo(() => buildFringe(4), [])
   const skirting = useMemo(() => skirtingGeo(), [])
   const cornice = useMemo(() => corniceGeo(), [])
-  const blob = useMemo(() => makeFeatheredRect(128, 128, 0.62), [])
-  const sheen = useMemo(() => makeGlassSheen(), [])
+  // one shared soft blob for every wall-hung drop shadow in the zone
+  // (Room + SetDressing) instead of five near-identical textures
+  const blob = useMemo(() => sharedWallShadowBlob(), [])
   // one moulded-plastic grain for the socket and the switch; their UVs are
   // in metres, so one 256 px tile ≈ 4 cm
   const plastic = useMemo(() => {
@@ -117,11 +120,10 @@ export default function Room() {
       fringe.dispose()
       skirting.dispose()
       cornice.dispose()
-      blob.dispose()
-      sheen.dispose()
+      // blob is a shared, app-lifetime singleton (textures.ts) — not ours to dispose
       plastic.dispose()
     },
-    [floor, wall, sideL, sideR, grime, wear, rug, rugMesh, fringe, skirting, cornice, blob, sheen, plastic],
+    [floor, wall, sideL, sideR, grime, wear, rug, rugMesh, fringe, skirting, cornice, plastic],
   )
 
   return (
@@ -254,8 +256,8 @@ export default function Room() {
         <meshStandardMaterial color="#3a3d46" roughness={0.6} />
       </mesh>
 
-      <Poster kind="rocket" position={[-0.47, 1.5, WALL_Z + 0.0005]} w={0.32} h={0.42} tilt={-0.012} blob={blob} sheen={sheen} />
-      <Poster kind="floppy" position={[0.52, 1.56, WALL_Z + 0.0005]} w={0.24} h={0.32} tilt={0.02} blob={blob} sheen={sheen} />
+      <Poster kind="rocket" position={[-0.47, 1.5, WALL_Z + 0.0005]} w={0.32} h={0.42} tilt={-0.012} blob={blob} />
+      <Poster kind="floppy" position={[0.52, 1.56, WALL_Z + 0.0005]} w={0.24} h={0.32} tilt={0.02} blob={blob} />
       <Shelf blob={blob} />
       <Chair />
       <WallSocket plastic={plastic} />
@@ -309,7 +311,6 @@ function Poster({
   h,
   tilt = 0,
   blob,
-  sheen,
 }: {
   kind: 'rocket' | 'floppy'
   position: [number, number, number]
@@ -317,7 +318,6 @@ function Poster({
   h: number
   tilt?: number
   blob: CanvasTexture
-  sheen: CanvasTexture
 }) {
   const tex: CanvasTexture = useMemo(
     () => (kind === 'rocket' ? makeRocketPoster() : makeFloppyPoster()),
@@ -334,10 +334,79 @@ function Poster({
       position={position}
       tilt={tilt}
       blob={blob}
-      sheen={sheen}
       glow={0.14}
     />
   )
+}
+
+/* ---------- shared frame/mat/glass materials ----------
+   Every FramedPrint of a given frame kind renders identically (same
+   texture, same repeat, same PBR knobs) — the w/h/matBorder only affect
+   GEOMETRY. So the frame, matboard and glass are cached module-level
+   singletons instead of one fresh Material (and, for wood, one freshly
+   redrawn canvas texture) per poster. Never mutated per frame, so a
+   shared instance is safe. The glass used to be a MeshPhysicalMaterial
+   for its clearcoat layer; on a flat, additive-blended, already-glossy
+   (roughness 0.04) black pane the clearcoat's second specular lobe was
+   not visibly adding anything over the base specular + emissive sheen,
+   so it is a plain MeshStandardMaterial now — one less shader variant. */
+const frameMaterialCache = new Map<'metal' | 'wood', MeshStandardMaterial>()
+function getFrameMaterial(kind: 'metal' | 'wood'): MeshStandardMaterial {
+  const cached = frameMaterialCache.get(kind)
+  if (cached) return cached
+  let material: MeshStandardMaterial
+  if (kind === 'metal') {
+    const m = brushedMetalMaps(4, 256, 1)
+    m.normalMap.repeat.set(3, 4)
+    m.roughnessMap.repeat.set(3, 4)
+    material = new MeshStandardMaterial({
+      color: '#1a1b20',
+      metalness: 0.78,
+      roughness: 1,
+      normalMap: m.normalMap,
+      normalScale: new Vector2(0.3, 0.3),
+      roughnessMap: m.roughnessMap,
+    })
+  } else {
+    const m = makeGrainMaps('#6a4630', 5)
+    m.map.repeat.set(5, 24)
+    m.normalMap.repeat.set(5, 24)
+    m.roughnessMap.repeat.set(5, 24)
+    material = new MeshStandardMaterial({
+      color: '#ffffff',
+      map: m.map,
+      normalMap: m.normalMap,
+      roughnessMap: m.roughnessMap,
+      roughness: 1,
+    })
+  }
+  frameMaterialCache.set(kind, material)
+  return material
+}
+let matboardMaterial: MeshStandardMaterial | null = null
+function getMatboardMaterial(): MeshStandardMaterial {
+  if (!matboardMaterial) {
+    matboardMaterial = new MeshStandardMaterial({ color: '#c4beaf', roughness: 0.95, side: DoubleSide })
+  }
+  return matboardMaterial
+}
+let glassMaterial: MeshStandardMaterial | null = null
+function getGlassMaterial(): MeshStandardMaterial {
+  if (!glassMaterial) {
+    glassMaterial = new MeshStandardMaterial({
+      color: '#000000',
+      roughness: 0.04,
+      metalness: 0,
+      envMapIntensity: 2.2,
+      emissive: '#ffffff',
+      emissiveMap: makeGlassSheen(),
+      emissiveIntensity: 0.06,
+      transparent: true,
+      blending: AdditiveBlending,
+      depthWrite: false,
+    })
+  }
+  return glassMaterial
 }
 
 /** Any print, framed: reused by the set dressing. Group origin = the wall
@@ -352,7 +421,6 @@ export function FramedPrint({
   rotationY = 0,
   tilt = 0,
   blob,
-  sheen: sheenProp,
   glow = 0,
 }: {
   tex: CanvasTexture
@@ -364,39 +432,20 @@ export function FramedPrint({
   rotationY?: number
   tilt?: number
   blob: CanvasTexture
-  /** a shared glass-sheen texture; one is made if you do not pass it */
-  sheen?: CanvasTexture
   /** how much the print glows on its own (pixel-art prints are lit; paper isn't) */
   glow?: number
 }) {
-  const own = useMemo(() => (sheenProp ? null : makeGlassSheen()), [sheenProp])
-  const sheen = (sheenProp ?? own) as CanvasTexture
   const metal = frame === 'metal'
   const g = useMemo(() => posterGeo(w, h, metal ? 'metal' : 'wood', matBorder), [w, h, metal, matBorder])
-  const brushed = useMemo(() => {
-    if (!metal) return null
-    const m = brushedMetalMaps(4, 256, 1)
-    m.normalMap.repeat.set(3, 4)
-    m.roughnessMap.repeat.set(3, 4)
-    return m
-  }, [metal])
-  const grain = useMemo(() => {
-    if (metal) return null
-    const m = makeGrainMaps('#6a4630', 5)
-    m.map.repeat.set(5, 24)
-    m.normalMap.repeat.set(5, 24)
-    m.roughnessMap.repeat.set(5, 24)
-    return m
-  }, [metal])
+  const frameMat = useMemo(() => getFrameMaterial(metal ? 'metal' : 'wood'), [metal])
   useEffect(
     () => () => {
-      own?.dispose()
       g.frame.dispose()
       g.mat.dispose()
-      brushed?.dispose()
-      grain?.dispose()
+      // frameMat / matboard / glass materials are shared, app-lifetime
+      // singletons — not ours to dispose
     },
-    [own, g, brushed, grain],
+    [g],
   )
   return (
     <group position={position} rotation-y={rotationY}>
@@ -409,30 +458,9 @@ export function FramedPrint({
           y={-0.01}
           opacity={0.6}
         />
-        <mesh geometry={g.frame} castShadow receiveShadow>
-          {metal && brushed ? (
-            <meshStandardMaterial
-              color="#1a1b20"
-              metalness={0.78}
-              roughness={1}
-              normalMap={brushed.normalMap}
-              normalScale={[0.3, 0.3]}
-              roughnessMap={brushed.roughnessMap}
-            />
-          ) : grain ? (
-            <meshStandardMaterial
-              color="#ffffff"
-              map={grain.map}
-              normalMap={grain.normalMap}
-              roughnessMap={grain.roughnessMap}
-              roughness={1}
-            />
-          ) : null}
-        </mesh>
+        <mesh geometry={g.frame} material={frameMat} castShadow receiveShadow />
         {/* mat with its bevel cut */}
-        <mesh geometry={g.mat} receiveShadow>
-          <meshStandardMaterial color="#c4beaf" roughness={0.95} side={DoubleSide} />
-        </mesh>
+        <mesh geometry={g.mat} material={getMatboardMaterial()} receiveShadow />
         {/* the print itself */}
         <mesh position={[0, 0, g.z.print]}>
           <planeGeometry args={[w, h]} />
@@ -445,22 +473,8 @@ export function FramedPrint({
           />
         </mesh>
         {/* glass */}
-        <mesh position={[0, 0, g.z.glass]} renderOrder={3}>
+        <mesh position={[0, 0, g.z.glass]} renderOrder={3} material={getGlassMaterial()}>
           <planeGeometry args={[g.openW, g.openH]} />
-          <meshPhysicalMaterial
-            color="#000000"
-            roughness={0.04}
-            metalness={0}
-            clearcoat={1}
-            clearcoatRoughness={0.03}
-            envMapIntensity={2.2}
-            emissive="#ffffff"
-            emissiveMap={sheen}
-            emissiveIntensity={0.06}
-            transparent
-            blending={AdditiveBlending}
-            depthWrite={false}
-          />
         </mesh>
       </group>
     </group>

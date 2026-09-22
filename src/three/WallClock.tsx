@@ -3,7 +3,6 @@ import { useFrame } from '@react-three/fiber'
 import {
   CircleGeometry,
   MeshBasicMaterial,
-  MeshPhysicalMaterial,
   MeshStandardMaterial,
   SphereGeometry,
   Vector2,
@@ -99,15 +98,18 @@ export default function WallClock() {
     [],
   )
   const glassMat = useMemo(
+    // was MeshPhysicalMaterial with clearcoat 1 at clearcoatRoughness 0.02
+    // — the same roughness as the base coat, so the clearcoat lobe was a
+    // second copy of the exact same specular highlight, not a different
+    // one; Standard alone reads identically on a crystal this small and
+    // skips compiling the clearcoat shader variant
     () =>
-      new MeshPhysicalMaterial({
+      new MeshStandardMaterial({
         color: '#ffffff',
         map: glare,
         transparent: true,
         roughness: 0.02,
         metalness: 0,
-        clearcoat: 1,
-        clearcoatRoughness: 0.02,
         envMapIntensity: 2.4,
         depthWrite: false,
       }),

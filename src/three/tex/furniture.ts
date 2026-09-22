@@ -1148,7 +1148,10 @@ function configure(
   t.wrapS = t.wrapT = RepeatWrapping
   t.magFilter = LinearFilter
   t.minFilter = LinearMipmapLinearFilter
-  t.anisotropy = 8
+  // small furniture props never fill enough of the frame for 8x aniso to
+  // read over 4x; halving it is free fill-rate/bandwidth on every chair,
+  // lamp and mug texture built through this toolkit
+  t.anisotropy = 4
   t.repeat.set(repeatX, repeatY)
   t.needsUpdate = true
   return t

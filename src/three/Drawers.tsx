@@ -5,6 +5,7 @@ import {
   DoubleSide,
   ExtrudeGeometry,
   MathUtils,
+  MeshStandardMaterial,
   Shape,
   Vector3,
   type BufferGeometry,
@@ -84,7 +85,7 @@ function starGeometry(): ExtrudeGeometry {
 function makeEnvelopeNote(complete: boolean): CanvasTexture {
   if (!complete) return makeLabel('NICE TRY!', '#1a1812', '#fdfcf7', 6, 10)
   const big = 'OK. FINE.'
-  const small = ['LABUBU SAID', 'YOU WOULD. - S.']
+  const small = ['THE DUCK SAID', 'YOU WOULD. - S.']
   const BIG = 6
   const SMALL = 4
   const PAD = 10
@@ -449,6 +450,39 @@ export default function Drawers() {
     }
   }, [])
   const brushed = useMemo(() => brushedMetalMaps(8, 256, 3), [])
+  /* the file drawer's front/hardware are the SAME look as the two working
+     drawers' (same maps, same roughness/metalness) — one material each,
+     shared across both meshes, instead of a duplicate per drawer */
+  const frontMat = useMemo(
+    () =>
+      new MeshStandardMaterial({
+        vertexColors: true,
+        map: wood.map,
+        bumpMap: wood.bumpMap,
+        bumpScale: 0.002,
+        roughnessMap: wood.roughnessMap,
+        roughness: 0.72,
+      }),
+    [wood],
+  )
+  const hardwareMat = useMemo(() => {
+    const m = new MeshStandardMaterial({
+      vertexColors: true,
+      metalness: 1,
+      roughness: 0.42,
+      roughnessMap: brushed.roughnessMap,
+      normalMap: brushed.normalMap,
+    })
+    m.normalScale.set(0.25, 0.25)
+    return m
+  }, [brushed])
+  useEffect(
+    () => () => {
+      frontMat.dispose()
+      hardwareMat.dispose()
+    },
+    [frontMat, hardwareMat],
+  )
   const holderTexes = useMemo(
     () =>
       ['PROJECTS', 'MISC.', 'FILES'].map((t) =>
@@ -523,7 +557,7 @@ export default function Drawers() {
   return (
     <group position={[0.6, 0, -0.56]}>
       {/* carcass: side boards, dark reveal plate, recessed toe-kick */}
-      <mesh geometry={parts.carcass} castShadow receiveShadow>
+      <mesh geometry={parts.carcass} castShadow receiveShadow matrixAutoUpdate={false}>
         <meshStandardMaterial
           vertexColors
           map={wood.map}
@@ -536,31 +570,19 @@ export default function Drawers() {
 
       {/* the file drawer that never opens: locked, like the rest of his secrets */}
       <group position={[0, FILE.y, -0.01]}>
-        <mesh geometry={parts.fileFront} castShadow receiveShadow>
-          <meshStandardMaterial
-            vertexColors
-            map={wood.map}
-            bumpMap={wood.bumpMap}
-            bumpScale={0.002}
-            roughnessMap={wood.roughnessMap}
-            roughness={0.72}
-          />
-        </mesh>
+        <mesh
+          geometry={parts.fileFront}
+          material={frontMat}
+          castShadow
+          receiveShadow
+          matrixAutoUpdate={false}
+        />
         {/* the card in its holder */}
         <mesh position={[0, FILE.h / 2 - 0.05 + 0.036 + 0.0, FACE_Z + 0.0029]}>
           <planeGeometry args={labelSize(holderTexes[2], 0.06)} />
           <meshBasicMaterial map={holderTexes[2]} color="#c7c3b6" />
         </mesh>
-        <mesh geometry={parts.fileHardware} castShadow>
-          <meshStandardMaterial
-            vertexColors
-            metalness={1}
-            roughness={0.42}
-            roughnessMap={brushed.roughnessMap}
-            normalMap={brushed.normalMap}
-            normalScale={[0.25, 0.25]}
-          />
-        </mesh>
+        <mesh geometry={parts.fileHardware} material={hardwareMat} castShadow matrixAutoUpdate={false} />
       </group>
 
       {[0, 1].map((i) => {
@@ -578,27 +600,15 @@ export default function Drawers() {
                 onActivate={() => toggle(i as 0 | 1)}
               >
                 {/* drawer front: overlay board, 5 mm reveals */}
-                <mesh geometry={parts.front} castShadow receiveShadow>
-                  <meshStandardMaterial
-                    vertexColors
-                    map={wood.map}
-                    bumpMap={wood.bumpMap}
-                    bumpScale={0.002}
-                    roughnessMap={wood.roughnessMap}
-                    roughness={0.72}
-                  />
-                </mesh>
+                <mesh
+                  geometry={parts.front}
+                  material={frontMat}
+                  castShadow
+                  receiveShadow
+                  matrixAutoUpdate={false}
+                />
                 {/* bridge pull, brass label holder and cylinder lock */}
-                <mesh geometry={parts.hardware} castShadow>
-                  <meshStandardMaterial
-                    vertexColors
-                    metalness={1}
-                    roughness={0.42}
-                    roughnessMap={brushed.roughnessMap}
-                    normalMap={brushed.normalMap}
-                    normalScale={[0.25, 0.25]}
-                  />
-                </mesh>
+                <mesh geometry={parts.hardware} material={hardwareMat} castShadow matrixAutoUpdate={false} />
                 {/* the card in the holder */}
                 <mesh position={[0, 0.037, FACE_Z + 0.0029]}>
                   <planeGeometry args={labelSize(holderTexes[i], 0.06)} />
@@ -613,7 +623,7 @@ export default function Drawers() {
                 visible={false}
               >
                 {/* tray box: floor, sides and back in one mesh */}
-                <mesh geometry={parts.tray} receiveShadow>
+                <mesh geometry={parts.tray} receiveShadow matrixAutoUpdate={false}>
                   <meshStandardMaterial
                     vertexColors
                     map={wood.map}
@@ -628,10 +638,10 @@ export default function Drawers() {
                 {i === 0 ? (
                   <group position={[0, -0.025, FRONT - 0.12]}>
                     {/* three floppies: shells, shutters and slots baked */}
-                    <mesh geometry={parts.floppyPlastic} castShadow>
+                    <mesh geometry={parts.floppyPlastic} castShadow matrixAutoUpdate={false}>
                       <meshStandardMaterial vertexColors roughness={0.55} />
                     </mesh>
-                    <mesh geometry={parts.floppyMetal}>
+                    <mesh geometry={parts.floppyMetal} matrixAutoUpdate={false}>
                       <meshStandardMaterial
                         color="#b9bdc9"
                         metalness={0.85}

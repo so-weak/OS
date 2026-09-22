@@ -1106,7 +1106,7 @@ export function teakMaps(seed = 5, size = 384): WoodMaps {
     t.wrapS = t.wrapT = RepeatWrapping
     t.magFilter = LinearFilter
     t.minFilter = LinearMipmapLinearFilter
-    t.anisotropy = 8
+    t.anisotropy = 4
     t.repeat.set(1 / WOOD_TILE.u, 1 / WOOD_TILE.v)
     t.needsUpdate = true
     return t

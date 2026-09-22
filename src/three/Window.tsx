@@ -156,8 +156,8 @@ function makeShaftMaterial(): ShaderMaterial {
       opacity: { value: 0 },
       lightColor: { value: new Color(SUN_SPILL) },
       spotPosition: { value: new Vector3() },
-      attenuation: { value: 2.6 },
-      anglePower: { value: 2.4 },
+      attenuation: { value: 2.2 },
+      anglePower: { value: 3.4 },
     },
     vertexShader: /* glsl */ `
       uniform vec3 spotPosition;
@@ -190,11 +190,13 @@ function makeShaftMaterial(): ShaderMaterial {
 
 function makeShaftGeometry(distance: number): CylinderGeometry {
   // apex at the origin, opening along +z so mesh.lookAt(target) aims it.
-  // The far radius used to be 1.1 — wider than the room is deep, so from
-  // some angles the whole cone's flared mouth showed through the glass
-  // as a flat pale wedge instead of a beam. 0.4 keeps it a believable
-  // shaft that has visibly widened by the time it reaches the rug.
-  const g = new CylinderGeometry(0.05, 0.4, distance, 48, 6, true)
+  // The far radius used to be 1.1, then 0.4 — both still read as a solid
+  // pale wedge through the glass from some angles (confirmed by directly
+  // zeroing the mesh's scale and watching the shape vanish: it really
+  // was this cone, not the sky art). 0.12 plus a much softer edge
+  // falloff below is what it actually takes to read as a beam of light
+  // rather than a shape.
+  const g = new CylinderGeometry(0.05, 0.12, distance, 48, 6, true)
   g.applyMatrix4(new Matrix4().makeTranslation(0, -distance / 2, 0))
   g.applyMatrix4(new Matrix4().makeRotationX(-Math.PI / 2))
   return g
@@ -666,16 +668,20 @@ export default function RoomWindow() {
   const rainGeo = useMemo(() => new PlaneGeometry(0.612, 0.812), [])
 
   const woodMat = useMemo(
+    // was MeshPhysicalMaterial with clearcoat 0.28: a thin varnish sheen
+    // over the roughnessMap. At 28% blend against a roughness range that
+    // already sits close to the clearcoat's own (0.42), the second specular
+    // lobe compiled a whole extra shader path for a highlight almost no
+    // one would notice missing — Standard's own Fresnel does the varnish
+    // read well enough
     () =>
-      new MeshPhysicalMaterial({
+      new MeshStandardMaterial({
         color: '#f2e3d3',
         map: wood.map,
         normalMap: wood.normalMap,
         normalScale: new Vector2(0.3, 0.3),
         roughnessMap: wood.roughnessMap,
         roughness: 1,
-        clearcoat: 0.28,
-        clearcoatRoughness: 0.42,
       }),
     [wood],
   )
@@ -938,7 +944,7 @@ export default function RoomWindow() {
     shaft.current.visible = showShaft
     if (showShaft) {
       const u = (shaft.current.material as ShaderMaterial).uniforms
-      u.opacity.value = 1.0 * day * (1 - 0.6 * rain) * (1 - 0.85 * closed)
+      u.opacity.value = 0.55 * day * (1 - 0.6 * rain) * (1 - 0.85 * closed)
       ;(u.lightColor.value as Color).copy(sunColor)
       shaft.current.getWorldPosition(u.spotPosition.value as Vector3)
       shaft.current.lookAt(target.current.getWorldPosition(scratch.v))

@@ -165,7 +165,10 @@ function layerTexture(canvas: HTMLCanvasElement, repeatS = false): CanvasTexture
   t.wrapT = ClampToEdgeWrapping
   t.magFilter = LinearFilter
   t.minFilter = LinearMipmapLinearFilter
-  t.anisotropy = 8
+  // seen only through the small window opening at oblique-ish angles, never
+  // filling the screen — 4x keeps the streets/gradient readable for a lot
+  // less sampling cost per lit fragment than the 8x every sky layer used
+  t.anisotropy = 4
   t.needsUpdate = true
   return t
 }
@@ -213,7 +216,10 @@ const SKY = LAYER.sky.f
 
 /** Vertical gradient tile (RepeatWrapping in U), dithered so a dark sky
     never bands. `stops` are [v in patch units, colour]. */
-function gradientTile(stops: [number, RGB][], seed: number, w = 128, h = 1024): CanvasTexture {
+// 1024px of vertical gradient was overkill for a smooth sky wash (the
+// dithering already breaks up banding); 640 halves the pixel count and is
+// still far finer than the eye can resolve a colour ramp at.
+function gradientTile(stops: [number, RGB][], seed: number, w = 128, h = 640): CanvasTexture {
   const ctx = makeCanvas(w, h, true)
   const img = ctx.createImageData(w, h)
   const rand = mulberry(seed)
@@ -501,8 +507,21 @@ function paintClouds(o: CloudOpts): HTMLCanvasElement {
     for (const [uc, vb, hw, hh] of CUMULUS_AT) {
       for (let i = 0; i < 90; i++) {
         const fx = (prand() + prand() + prand()) / 1.5 - 1 // -1 … 1, centre-heavy
-        const top = hh * Math.pow(Math.max(0.02, 1 - fx * fx), 0.7)
-        const rv = hh * (0.12 + 0.3 * prand() * prand() + 0.06 * (1 - Math.abs(fx)))
+        // the envelope alone (a clean parabola in fx) puts every puff's
+        // height on one smooth curve, so the heap reads as a single
+        // symmetric triangular peak instead of a real cloud's several
+        // uneven towers. `lobes` is low in the "valleys" between two or
+        // three bumps across the width (seeded by uc so each cloud in
+        // CUMULUS_AT differs) — SKIPPING a puff there, not just placing
+        // it shorter, is what matters: puffs are big enough that merely
+        // reshaping their height still smoothed straight over the gaps,
+        // so valleys need genuinely fewer puffs, not shorter ones.
+        const lobes =
+          0.32 + 0.68 * Math.pow(0.5 + 0.5 * Math.sin(fx * 11 + uc * 7.3), 1.7)
+        if (prand() > lobes) continue
+        const jitter = 0.82 + 0.36 * prand()
+        const top = hh * Math.pow(Math.max(0.02, 1 - fx * fx), 0.6) * jitter
+        const rv = hh * (0.09 + 0.22 * prand() * prand() + 0.045 * (1 - Math.abs(fx)))
         const vy = vb + rv * 0.55 + prand() * Math.max(0, top - rv * 1.1)
         const cxp = (uc + fx * hw - o.f.u0) * sxU
         const cyp = (o.f.v1 - vy) * syV
@@ -552,7 +571,13 @@ function paintClouds(o: CloudOpts): HTMLCanvasElement {
       } else {
         const shade = clamp01(0.7 + 2.6 * (dn - up) + 0.18 * (d - 0.5))
         col = mixRGB(belly, top, shade)
-        alpha = smoothstep(0.02, 0.35, d) * (o.kind === 'bands' ? 120 : 250)
+        // cumulus used to clip to full opacity by d=0.35, so most of a
+        // heap's body read as one flat painted shape; a wider ramp keeps
+        // some translucency and density variation showing through
+        alpha =
+          o.kind === 'bands'
+            ? smoothstep(0.02, 0.35, d) * 120
+            : smoothstep(0.05, 0.62, d) * 232
       }
       const o4 = i * 4
       img.data[o4] = col[0]
@@ -1119,7 +1144,11 @@ function paintBuilding(
 
 function paintCityLayer(layer: LayerName, night: boolean): HTMLCanvasElement {
   const style = (night ? NIGHT_STYLE : DAY_STYLE)[layer]
-  const pxU = layer === 'far' ? 420 : layer === 'mid' ? 440 : 500
+  // texel density of the painted skylines: cut ~60% from the original
+  // (420/440/500) — these layers sit 1.3-3.1m behind a 0.62x0.82m opening
+  // and are already softened by atmospheric mist/glow, so the extra detail
+  // was never resolvable from the room's camera positions
+  const pxU = layer === 'far' ? 270 : layer === 'mid' ? 280 : 320
   const frame = LAYER[layer].f
   const fr = new Fr(frame, pxU)
   const ctx = makeCanvas(fr.w, fr.h, true)
@@ -1380,7 +1409,7 @@ function paintNear(
    ===================================================================== */
 
 function makeBokeh(): CanvasTexture {
-  const fr = new Fr(LAYER.bokeh.f, 260)
+  const fr = new Fr(LAYER.bokeh.f, 170) // out-of-focus by design; needs no fine texel grid
   const ctx = makeCanvas(fr.w, fr.h, true)
   const rand = mulberry(77)
   const sodium = hex('#ffb347')
@@ -1495,7 +1524,7 @@ export interface NightScene {
 export function makeNightScene(age = moonAge()): NightScene {
   const sky = gradientTile(NIGHT_SKY, 5)
   const clouds = layerTexture(
-    paintClouds({ f: LAYER.clouds.f, pxU: 170, seed: 71, kind: 'bands', night: true }),
+    paintClouds({ f: LAYER.clouds.f, pxU: 115, seed: 71, kind: 'bands', night: true }),
   )
   const moon = makeMoonTexture(age)
   const far = layerTexture(paintCityLayer('far', true))
@@ -1686,8 +1715,8 @@ function makeSunTexture(): CanvasTexture {
 function makeDayClouds(kind: 'high' | 'near'): CanvasTexture {
   return layerTexture(
     kind === 'high'
-      ? paintClouds({ f: LAYER.clouds.f, pxU: 170, seed: 91, kind: 'bands', night: false })
-      : paintClouds({ f: LAYER.cloudsNear.f, pxU: 250, seed: 92, kind: 'cumulus', night: false }),
+      ? paintClouds({ f: LAYER.clouds.f, pxU: 115, seed: 91, kind: 'bands', night: false })
+      : paintClouds({ f: LAYER.cloudsNear.f, pxU: 165, seed: 92, kind: 'cumulus', night: false }),
   )
 }
 

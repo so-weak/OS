@@ -9,8 +9,9 @@ import Desk, { Cables } from './Desk'
 import Drawers from './Drawers'
 import DeskClutter from './DeskClutter'
 import DustMotes from './DustMotes'
+import FrameGovernor from './FrameGovernor'
 import Keyboard from './Keyboard'
-import Labubu from './Labubu'
+import Duck from './Duck'
 import Lamp from './Lamp'
 import Monitor from './Monitor'
 import Papers from './Papers'
@@ -40,7 +41,7 @@ import { useWorld } from '../world'
    element to pointer-events:none (the DOM screen lives *behind* the
    canvas and shows through a punched alpha hole). So pointer events are
    sourced from #root instead, with client coordinates; that keeps every
-   3D clickable (labubu, lamp, tower, monitor, papers, bin…) live at the
+   3D clickable (duck, lamp, tower, monitor, papers, bin…) live at the
    same time as the DOM screen. zIndexRange on the Html (see Monitor.tsx)
    keeps the canvas below the HUD overlays in App.tsx (z-index 50).
 
@@ -79,7 +80,15 @@ export default function Scene() {
           far: 24,
           position: [INTRO_CAM_POS.x, INTRO_CAM_POS.y, INTRO_CAM_POS.z],
         }}
-        gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
+        gl={{
+          antialias: true,
+          alpha: true,
+          // depth is required (3D room); stencil is unused anywhere in the
+          // app (no outline/mask passes) — dropping it shrinks the
+          // framebuffer and saves the bandwidth every draw call pays for it
+          stencil: false,
+          powerPreference: 'high-performance',
+        }}
         onCreated={({ gl, scene, camera }) => {
           // dev only: window.__gl.info.render → { calls, triangles } for perf
           // checks; window.__scene lets experiments toggle lights and meshes;
@@ -102,6 +111,7 @@ export default function Scene() {
       >
         <color attach="background" args={[P.night]} />
         {!PINNED_DPR && <AdaptiveQuality />}
+        <FrameGovernor />
 
         {/* damps every shared light value first (priority -1) */}
         <WorldFrame />
@@ -118,7 +128,7 @@ export default function Scene() {
         <Tower />
         <Keyboard />
         <Lamp />
-        <Labubu />
+        <Duck />
         <Papers />
         <Bookcase />
         <TrashGame />

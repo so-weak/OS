@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { PerformanceMonitor } from '@react-three/drei'
 import { useSystem } from '../os/store'
+import { useFrameGoverned } from './FrameGovernor'
 
 /* =====================================================================
    Adaptive resolution.
@@ -45,6 +46,13 @@ export default function AdaptiveQuality() {
   const view = useSystem((s) => s.view)
   const [settled, setSettled] = useState(false)
   const frames = useRef(0)
+  // FrameGovernor drops the render loop to ~30Hz after ~8s idle; without
+  // this, that governed rate reads to PerformanceMonitor as a slow
+  // machine and it pumps the DPR down, then back up the moment input
+  // resumes and the loop returns to full rate — visible pumping from a
+  // deliberate idle optimisation, not an actual perf problem. Idle just
+  // unmounts the monitor; the chosen rung is kept as-is until active again.
+  const governed = useFrameGoverned()
 
   // the rung the monitor has chosen (never touched by the screen cap)
   const rung = useRef(
@@ -69,7 +77,7 @@ export default function AdaptiveQuality() {
   }, [view, setDpr])
 
   // only the room view is measured: zooming and the OS have their own cost
-  const monitoring = settled && view === 'room'
+  const monitoring = settled && view === 'room' && !governed
 
   return monitoring ? (
     <PerformanceMonitor

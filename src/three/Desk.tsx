@@ -190,7 +190,7 @@ export default function Desk() {
   return (
     <group position={[DESK.x, 0, DESK.z]}>
       {/* varnished top and the boards under it share one set of maps */}
-      <mesh geometry={geo.top} castShadow receiveShadow>
+      <mesh geometry={geo.top} castShadow receiveShadow matrixAutoUpdate={false}>
         <meshPhysicalMaterial
           vertexColors
           map={wood.map}
@@ -202,7 +202,7 @@ export default function Desk() {
           clearcoatRoughness={0.38}
         />
       </mesh>
-      <mesh geometry={geo.frame} castShadow receiveShadow>
+      <mesh geometry={geo.frame} castShadow receiveShadow matrixAutoUpdate={false}>
         <meshStandardMaterial
           vertexColors
           map={wood.map}
@@ -212,7 +212,7 @@ export default function Desk() {
           roughness={0.85}
         />
       </mesh>
-      <mesh geometry={geo.grommet} receiveShadow>
+      <mesh geometry={geo.grommet} receiveShadow matrixAutoUpdate={false}>
         <meshStandardMaterial vertexColors roughness={0.6} />
       </mesh>
 
@@ -518,11 +518,14 @@ function Mug() {
     const dt = Math.min(delta, 0.05)
     const t = state.clock.elapsedTime
 
-    // poke jiggle (underdamped spring)
+    // poke jiggle (underdamped spring) — stop integrating once it has
+    // settled back to rest instead of running the spring forever
     const sq = squash.current
-    sq.v += (-110 * sq.s - 8 * sq.v) * dt
-    sq.s += sq.v * dt
-    rig.current.scale.set(1 - sq.s * 0.5, 1 + sq.s, 1 - sq.s * 0.5)
+    if (Math.abs(sq.s) > 1e-4 || Math.abs(sq.v) > 1e-4) {
+      sq.v += (-110 * sq.s - 8 * sq.v) * dt
+      sq.s += sq.v * dt
+      rig.current.scale.set(1 - sq.s * 0.5, 1 + sq.s, 1 - sq.s * 0.5)
+    }
 
     boost.current = Math.max(0, boost.current - dt / 1.4)
 
@@ -591,7 +594,7 @@ function Mug() {
       >
         <group ref={rig}>
           {/* glazed stoneware: red outside, cream inside, raw clay foot */}
-          <mesh geometry={geo.body} castShadow receiveShadow>
+          <mesh geometry={geo.body} castShadow receiveShadow matrixAutoUpdate={false}>
             <meshPhysicalMaterial
               vertexColors
               roughness={0.16}
@@ -606,7 +609,7 @@ function Mug() {
               little emissive stands in for the light that scatters through
               milk, so it stays caramel in the dim corner instead of going
               chocolate. */}
-          <mesh geometry={geo.chai}>
+          <mesh geometry={geo.chai} matrixAutoUpdate={false}>
             <meshPhysicalMaterial
               vertexColors
               roughness={0.36}
@@ -676,6 +679,26 @@ interface CableProps {
   samples?: number
 }
 
+/** the sweep a Cable draws, factored out so the non-braided runs below can
+    be built and merged without mounting a component per cable */
+function buildCableGeo(
+  points: [number, number, number][],
+  radius: number,
+  samples = 64,
+): BufferGeometry {
+  const curve = new CatmullRomCurve3(
+    points.map((p) => new Vector3(...p)),
+    false,
+    'centripetal',
+  )
+  return sweep({
+    path: curve.getPoints(samples),
+    radial: 6,
+    size: () => [radius, radius],
+    vTile: Math.PI * 2 * radius,
+  })
+}
+
 function Cable({
   points,
   radius = 0.005,
@@ -683,19 +706,10 @@ function Cable({
   braided = false,
   samples = 64,
 }: CableProps) {
-  const geo = useMemo(() => {
-    const curve = new CatmullRomCurve3(
-      points.map((p) => new Vector3(...p)),
-      false,
-      'centripetal',
-    )
-    return sweep({
-      path: curve.getPoints(samples),
-      radial: 6,
-      size: () => [radius, radius],
-      vTile: Math.PI * 2 * radius,
-    })
-  }, [points, radius, samples])
+  const geo = useMemo(
+    () => buildCableGeo(points, radius, samples),
+    [points, radius, samples],
+  )
   useEffect(() => () => geo.dispose(), [geo])
   const braid = useMemo(() => (braided ? braidMaps() : null), [braided])
   useEffect(() => () => braid?.dispose(), [braid])
@@ -846,6 +860,71 @@ export function Cables() {
   const lb = pts.lampBoot
   const se = pts.stripEnd
 
+  /* keyboard, monitor and strip->wall cables never move, are never
+     clickable, and already share one flat #P.cable material (only the
+     braided lamp cord above gets its own look) — merged into one mesh
+     they cost one draw call and one shadow caster instead of three */
+  const bundleGeo = useMemo(
+    () =>
+      mergeParts([
+        buildCableGeo(
+          [
+            [0.17, 0.7615, -0.522],
+            [0.178, 0.7505, -0.55],
+            [0.215, 0.7458, -0.63],
+            [0.27, 0.7455, -0.74],
+            [0.305, 0.7455, -0.84],
+            [0.3, 0.7455, -0.905],
+            [0.3, 0.7405, -0.9205],
+            [0.3, 0.68, -0.928],
+            [0.302, 0.5, -0.94],
+            [0.315, 0.3, -0.97],
+            [0.35, 0.1, -0.99],
+            [0.42, 0.012, -1.0],
+            [0.6, 0.009, -0.99],
+            [0.78, 0.02, -0.96],
+            [0.92, 0.12, -0.93],
+            [0.97, 0.2, -0.915],
+            [0.99, 0.24, -0.884],
+          ],
+          0.0036,
+        ),
+        buildCableGeo(
+          [
+            [0.02, 0.95, -0.9],
+            [0.045, 0.93, -0.985],
+            [0.09, 0.8, -1.0],
+            [0.13, 0.55, -1.015],
+            [0.17, 0.25, -1.03],
+            [0.24, 0.05, -1.04],
+            [0.38, 0.0065, -1.045],
+            [0.62, 0.0065, -1.03],
+            [0.85, 0.02, -0.99],
+            [0.93, 0.12, -0.95],
+            [0.955, 0.17, -0.884],
+          ],
+          0.0055,
+        ),
+        buildCableGeo(
+          [
+            [se[0], se[1], se[2]],
+            [se[0] + 0.03, 0.012, se[2] - 0.02],
+            [-0.2, 0.0058, -1.04],
+            [0.1, 0.0058, -1.052],
+            [0.45, 0.0058, -1.05],
+            [0.62, 0.0062, -1.04],
+            [0.7, 0.03, -1.012],
+            [0.735, 0.1, -0.985],
+            [0.728, 0.16, -0.983],
+            [0.72, 0.192, -0.992],
+          ],
+          0.0048,
+        ),
+      ]),
+    [se],
+  )
+  useEffect(() => () => bundleGeo.dispose(), [bundleGeo])
+
   return (
     <group>
       {/* lamp cord: cloth-covered, base -> grommet -> down behind the desk
@@ -873,62 +952,11 @@ export function Cables() {
           [lb[0], lb[1], lb[2]],
         ]}
       />
-      {/* keyboard cable: out the back, along the desk, down the grommet */}
-      <Cable
-        radius={0.0036}
-        points={[
-          [0.17, 0.7615, -0.522],
-          [0.178, 0.7505, -0.55],
-          [0.215, 0.7458, -0.63],
-          [0.27, 0.7455, -0.74],
-          [0.305, 0.7455, -0.84],
-          [0.3, 0.7455, -0.905],
-          [0.3, 0.7405, -0.9205],
-          [0.3, 0.68, -0.928],
-          [0.302, 0.5, -0.94],
-          [0.315, 0.3, -0.97],
-          [0.35, 0.1, -0.99],
-          [0.42, 0.012, -1.0],
-          [0.6, 0.009, -0.99],
-          [0.78, 0.02, -0.96],
-          [0.92, 0.12, -0.93],
-          [0.97, 0.2, -0.915],
-          [0.99, 0.24, -0.884],
-        ]}
-      />
-      {/* monitor cable: thicker, down the back to the floor and over to the tower */}
-      <Cable
-        radius={0.0055}
-        points={[
-          [0.02, 0.95, -0.9],
-          [0.045, 0.93, -0.985],
-          [0.09, 0.8, -1.0],
-          [0.13, 0.55, -1.015],
-          [0.17, 0.25, -1.03],
-          [0.24, 0.05, -1.04],
-          [0.38, 0.0065, -1.045],
-          [0.62, 0.0065, -1.03],
-          [0.85, 0.02, -0.99],
-          [0.93, 0.12, -0.95],
-          [0.955, 0.17, -0.884],
-        ]}
-      />
-      {/* strip -> wall socket: along the floor, then up to the plug */}
-      <Cable
-        radius={0.0048}
-        points={[
-          [se[0], se[1], se[2]],
-          [se[0] + 0.03, 0.012, se[2] - 0.02],
-          [-0.2, 0.0058, -1.04],
-          [0.1, 0.0058, -1.052],
-          [0.45, 0.0058, -1.05],
-          [0.62, 0.0062, -1.04],
-          [0.7, 0.03, -1.012],
-          [0.735, 0.1, -0.985],
-          [0.728, 0.16, -0.983],
-          [0.72, 0.192, -0.992],
-        ]}
-      />
+      {/* keyboard, monitor and strip->wall cables: one merged draw call
+          (see bundleGeo above — same #P.cable look all three had before) */}
+      <mesh geometry={bundleGeo} castShadow matrixAutoUpdate={false}>
+        <meshStandardMaterial color={P.cable} roughness={0.5} />
+      </mesh>
 
       {/* plug in the wall socket's lower outlet, boot toward the room */}
       <mesh geometry={plug} position={[0.72, 0.192, -1.04]}>

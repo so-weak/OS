@@ -27,7 +27,7 @@ import { pinHeadGeo } from './pinParts'
 import { BOARD, CORK_Z, PRINTS, printPin, usePins } from './pinState'
 import { useRoom } from './roomState'
 import { FramedPrint } from './Room'
-import { makeFeatheredRect } from './textures'
+import { sharedWallShadowBlob } from './textures'
 import { plasterMaps } from './tex/noise'
 import {
   CARDS,
@@ -200,8 +200,7 @@ function Plant({ position }: { position: [number, number, number] }) {
       leafGeo.dispose()
       leafTex.dispose()
       stemGeo.dispose()
-      pot.pot.dispose()
-      pot.saucer.dispose()
+      pot.dispose()
       clay.dispose()
       soil.dispose()
       leafMat.dispose()
@@ -211,13 +210,18 @@ function Plant({ position }: { position: [number, number, number] }) {
 
   return (
     <group position={position}>
-      <mesh geometry={pot.saucer} receiveShadow>
-        <meshStandardMaterial color="#8f4c2c" roughness={1} normalMap={clay.normalMap} normalScale={[0.3, 0.3]} roughnessMap={clay.roughnessMap} />
+      {/* pot + saucer: one welded, vertex-coloured mesh (the pot's old
+          +0.012 group offset is baked into its geometry, see potGeo) */}
+      <mesh geometry={pot} castShadow receiveShadow>
+        <meshStandardMaterial
+          vertexColors
+          roughness={1}
+          normalMap={clay.normalMap}
+          normalScale={[0.3, 0.3]}
+          roughnessMap={clay.roughnessMap}
+        />
       </mesh>
       <group position={[0, 0.012, 0]}>
-        <mesh geometry={pot.pot} castShadow receiveShadow>
-          <meshStandardMaterial color="#b4643b" roughness={1} normalMap={clay.normalMap} normalScale={[0.3, 0.3]} roughnessMap={clay.roughnessMap} />
-        </mesh>
         <mesh geometry={soil} position={[0, 0.183, 0]}>
           <meshStandardMaterial color="#2a1c12" roughness={1} />
         </mesh>
@@ -299,20 +303,19 @@ function SillPlant() {
 /* ---------- the right-hand wall: a mandala print and a cloth bag ---------- */
 function RightWall() {
   const art = useMemo(() => makeMandalaArt(), [])
-  const blob = useMemo(() => makeFeatheredRect(64, 64, 0.6), [])
+  const blob = sharedWallShadowBlob()
   const print = useMemo(() => makeBlockPrint(), [])
   const bag = useMemo(() => bagGeo(), [])
   const hook = useMemo(() => hookGeo(), [])
   useEffect(
     () => () => {
       art.dispose()
-      blob.dispose()
       print.dispose()
       bag.body.dispose()
       bag.strap.dispose()
       hook.dispose()
     },
-    [art, blob, print, bag, hook],
+    [art, print, bag, hook],
   )
   return (
     <group>
@@ -401,7 +404,7 @@ function CorkBoard({
   const paperUp = useRoom((s) => s.paperUp)
   const cork = useMemo(() => makeCorkMaps(6), [])
   const atlas = useMemo(() => makeCardAtlas(9), [])
-  const blob = useMemo(() => makeFeatheredRect(64, 64, 0.6), [])
+  const blob = sharedWallShadowBlob()
   const frame = useMemo(
     () =>
       sweep(
@@ -469,14 +472,14 @@ function CorkBoard({
     () => () => {
       cork.dispose()
       atlas.dispose()
-      blob.dispose()
+      // blob is a shared, app-lifetime singleton (textures.ts) — not ours to dispose
       frame.dispose()
       wood.dispose()
       cards.cards.dispose()
       pinGeo.dispose()
       yarn.dispose()
     },
-    [cork, atlas, blob, frame, wood, cards, pinGeo, yarn],
+    [cork, atlas, frame, wood, cards, pinGeo, yarn],
   )
 
   return (

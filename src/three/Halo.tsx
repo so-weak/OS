@@ -7,6 +7,7 @@ import {
   SRGBColorSpace,
   type ColorRepresentation,
   type MeshStandardMaterial,
+  type Sprite,
   type SpriteMaterial,
 } from 'three'
 import { makeCanvas } from './textures'
@@ -80,21 +81,28 @@ export default function Halo({
   max?: number
 }) {
   const own = useRef<SpriteMaterial>(null)
+  const spriteRef = useRef<Sprite>(null)
 
   useFrame(() => {
     const led = source?.current
     const mat = own.current
     if (!led || !mat) return
-    mat.opacity = Math.min(max, led.emissiveIntensity * gain)
+    const op = Math.min(max, led.emissiveIntensity * gain)
+    mat.opacity = op
     mat.color.copy(led.emissive)
+    // an LED's glow is invisible well before its emission is: skip the
+    // draw call entirely while dark instead of blending a transparent quad
+    if (spriteRef.current) spriteRef.current.visible = op > 0.003
   })
 
   return (
     <sprite
+      ref={spriteRef}
       position={position}
       scale={[size, size, 1]}
       raycast={noRaycast}
       renderOrder={5}
+      visible={source ? true : intensity > 0.003}
     >
       <spriteMaterial
         ref={source ? own : ref}

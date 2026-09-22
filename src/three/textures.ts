@@ -399,6 +399,17 @@ export function makeSoftCircle(): CanvasTexture {
   return finish(ctx, false)
 }
 
+/** One soft radial-ish blob, shared by every wall-hung drop shadow in the
+    room (posters, the shelf, the cork board, the right-wall print/bag).
+    They all used their own near-identical feathered rect before; one
+    96×96 texture reads the same once blurred onto a plane and stretched
+    per-instance by geometry size, so this is a pure texture-count win. */
+let sharedWallShadowBlobTex: CanvasTexture | null = null
+export function sharedWallShadowBlob(): CanvasTexture {
+  if (!sharedWallShadowBlobTex) sharedWallShadowBlobTex = makeFeatheredRect(96, 96, 0.6)
+  return sharedWallShadowBlobTex
+}
+
 /** Feathered white rectangle — the soft phosphor bleed around the CRT.
     Alpha falls off smoothly over `feather` (fraction of the half-size)
     from every edge, so an additive plane reads as light, not a card. */

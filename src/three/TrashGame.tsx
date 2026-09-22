@@ -5,6 +5,7 @@ import {
   CanvasTexture,
   DoubleSide,
   MathUtils,
+  MeshStandardMaterial,
   NoColorSpace,
   RepeatWrapping,
   SRGBColorSpace,
@@ -351,8 +352,12 @@ function stepBall(
   const b = game.balls[i]
   switch (b.phase) {
     case 'idle': {
-      b.scale = MathUtils.damp(b.scale, 1, 10, dt)
-      m.scale.setScalar(Math.max(0.001, b.scale))
+      // once a ball has fully respawned there is nothing left to settle —
+      // stop re-damping and re-setting a scale that is already 1
+      if (Math.abs(b.scale - 1) > 1e-3) {
+        b.scale = MathUtils.damp(b.scale, 1, 10, dt)
+        m.scale.setScalar(Math.max(0.001, b.scale))
+      }
       return false
     }
     case 'fly': {
@@ -511,6 +516,19 @@ export default function TrashGame() {
   const bin = useMemo(() => buildBin(), [])
   const perfTex = useMemo(() => makePerforation(), [])
   const paperTex = useMemo(() => makePaper(), [])
+  /* the three crumpled balls are separately animated (each its own click
+     target and flight state) but look identical — one shared material
+     instead of one per ball; nothing here is ever mutated per-frame */
+  const ballMat = useMemo(
+    () =>
+      new MeshStandardMaterial({
+        vertexColors: true,
+        map: paperTex,
+        roughness: 0.92,
+      }),
+    [paperTex],
+  )
+  useEffect(() => () => ballMat.dispose(), [ballMat])
   const sparkTex = useMemo(() => makeSoftCircle(), [])
   const sparkInit = useMemo(() => new Float32Array(SPARKS * 3), [])
 
@@ -568,7 +586,7 @@ export default function TrashGame() {
           }}
         >
           {/* perforated steel wall: real see-through holes */}
-          <mesh geometry={bin.perf} castShadow receiveShadow>
+          <mesh geometry={bin.perf} castShadow receiveShadow matrixAutoUpdate={false}>
             <meshStandardMaterial
               color="#2d3239"
               metalness={0.6}
@@ -580,7 +598,7 @@ export default function TrashGame() {
             />
           </mesh>
           {/* rolled lip, base ring, floor and pressed ribs */}
-          <mesh geometry={bin.solid} castShadow receiveShadow>
+          <mesh geometry={bin.solid} castShadow receiveShadow matrixAutoUpdate={false}>
             <meshStandardMaterial
               color="#3a4048"
               metalness={0.65}
@@ -589,7 +607,7 @@ export default function TrashGame() {
             />
           </mesh>
           {/* the bin bag, folded over the lip */}
-          <mesh geometry={bin.liner} receiveShadow>
+          <mesh geometry={bin.liner} receiveShadow matrixAutoUpdate={false}>
             <meshStandardMaterial
               color="#7a808a"
               roughness={0.34}
@@ -621,13 +639,12 @@ export default function TrashGame() {
             }}
             position={s}
           >
-            <mesh geometry={geos[i]} castShadow>
-              <meshStandardMaterial
-                vertexColors
-                map={paperTex}
-                roughness={0.92}
-              />
-            </mesh>
+            <mesh
+              geometry={geos[i]}
+              material={ballMat}
+              castShadow
+              matrixAutoUpdate={false}
+            />
           </group>
         </Clickable>
       ))}

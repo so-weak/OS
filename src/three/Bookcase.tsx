@@ -1,17 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import {
+  BufferAttribute,
+  Color,
   DoubleSide,
   Euler,
   MathUtils,
+  Matrix4,
+  MeshStandardMaterial,
   Quaternion,
   Vector3,
+  type BufferGeometry,
   type CanvasTexture,
   type Group,
   type Mesh,
   type PointLight,
   type Sprite,
 } from 'three'
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { books, type Book } from '../data/library'
 import { useSystem } from '../os/store'
 import { playBeep, playClick } from '../os/sound'
@@ -32,7 +39,7 @@ import {
   bookInk,
   makeBackCover,
   makeFrontCover,
-  makeSpine,
+  makeSpineAtlas,
   makeStrip,
   spineTooltip,
   type BookDims,
@@ -41,6 +48,103 @@ import { makeSoftCircle, makeWood } from './textures'
 import { useFontsReady } from '../useFontsReady'
 import { LEDGER, useWorld } from '../world'
 import { rb } from './rbox'
+
+/* ---------------------------------------------------------------------
+   Shared materials / geometry helpers — the whole point is that 113
+   books share as few GPU objects as the picture allows instead of each
+   minting its own. Never share a material a per-frame effect mutates.
+   --------------------------------------------------------------------- */
+
+/** The page block is the same putty colour on every volume. */
+const PAGE_MATERIAL = new MeshStandardMaterial({ color: '#e6dcc2', roughness: 0.95 })
+/** The "currently reading" ribbon is the same red on every volume. */
+const RIBBON_MATERIAL = new MeshStandardMaterial({
+  color: '#b5220a',
+  roughness: 0.7,
+  side: DoubleSide,
+})
+
+/** Plain (untextured) cloth board material, cached by colour so the
+    handful of books that DO share an exact hex ink colour share a
+    material instance instead of minting a duplicate. */
+const clothMatCache = new Map<string, MeshStandardMaterial>()
+function clothMaterial(color: string): MeshStandardMaterial {
+  let m = clothMatCache.get(color)
+  if (!m) {
+    m = new MeshStandardMaterial({ color, roughness: 0.86 })
+    clothMatCache.set(color, m)
+  }
+  return m
+}
+
+/** A non-indexed RoundedBoxGeometry baked at a world offset (and
+    optional Y rotation), ready to merge with its neighbours — used for
+    the case's static carcass, bookends and floor-stack decor. */
+function bakedBox(
+  w: number,
+  h: number,
+  d: number,
+  x: number,
+  y: number,
+  z: number,
+  radius?: number,
+  rotY = 0,
+): BufferGeometry {
+  const args = rb(w, h, d, radius)
+  const built = new RoundedBoxGeometry(...args)
+  // RoundedBoxGeometry already builds non-indexed (toNonIndexed() on an
+  // already non-indexed geometry just warns) — guard rather than churn
+  // the console on every merge
+  const g = built.index ? built.toNonIndexed() : built
+  const m = rotY ? new Matrix4().makeRotationY(rotY) : new Matrix4()
+  m.setPosition(x, y, z)
+  g.applyMatrix4(m)
+  return g
+}
+
+/** Same, but stamps a flat vertex colour on it first — for merging
+    same-shape, different-tint decor (the floor stack) into one draw
+    call with `vertexColors` on the material instead of `color`. */
+function bakedBoxTinted(
+  w: number,
+  h: number,
+  d: number,
+  x: number,
+  y: number,
+  z: number,
+  hex: string,
+  rotY = 0,
+): BufferGeometry {
+  const g = bakedBox(w, h, d, x, y, z, undefined, rotY)
+  const c = new Color(hex)
+  const count = g.getAttribute('position').count
+  const arr = new Float32Array(count * 3)
+  for (let i = 0; i < count; i++) {
+    arr[i * 3] = c.r
+    arr[i * 3 + 1] = c.g
+    arr[i * 3 + 2] = c.b
+  }
+  g.setAttribute('color', new BufferAttribute(arr, 3))
+  return g
+}
+
+/** Remaps a freshly-built box geometry's UVs (currently 0..1 per face,
+    same on every face) into one cell of a shared atlas texture, so all
+    six faces read the same sub-rect instead of the whole sheet. */
+function remapAtlasUV(
+  geom: BufferGeometry,
+  rect: { u0: number; v0: number; u1: number; v1: number },
+): void {
+  const uv = geom.getAttribute('uv') as BufferAttribute
+  const arr = uv.array as Float32Array
+  const su = rect.u1 - rect.u0
+  const sv = rect.v1 - rect.v0
+  for (let i = 0; i < arr.length; i += 2) {
+    arr[i] = rect.u0 + arr[i] * su
+    arr[i + 1] = rect.v0 + arr[i + 1] * sv
+  }
+  uv.needsUpdate = true
+}
 
 /* =====================================================================
    THE STACKS — the 3D library in the back-left corner.
@@ -179,23 +283,32 @@ export default function Bookcase() {
   const slots = useMemo(() => layoutSlots(shelves), [shelves])
   const ends = useMemo(() => rowEnds(shelves), [shelves])
 
-  /* Stamped titles are only legible at the shelf, so the spine textures
-     live exactly as long as the visit does: built on the way in,
+  /* Stamped titles are only legible at the shelf, so the spine atlas
+     lives exactly as long as the visit does: built on the way in,
      released on the way out. From the room the books are just cloth,
-     which is all you can see from there anyway. */
-  const spines = useMemo(
-    () =>
-      fontsReady && open
-        ? new Map<string, CanvasTexture>(
-            slots.map((s) => [s.book.id, makeSpine(s.book)]),
-          )
-        : null,
+     which is all you can see from there anyway. One shared texture (and
+     one shared material) for every shelved spine instead of ~110
+     distinct ones — see libraryTextures.makeSpineAtlas. */
+  const atlas = useMemo(
+    () => (fontsReady && open ? makeSpineAtlas(slots.map((s) => s.book)) : null),
     [fontsReady, open, slots],
   )
   useEffect(() => {
-    if (!spines) return
-    return () => spines.forEach((t) => t.dispose())
-  }, [spines])
+    if (!atlas) return
+    return () => atlas.dispose()
+  }, [atlas])
+
+  const spineMaterial = useMemo(
+    () =>
+      atlas
+        ? new MeshStandardMaterial({ color: '#ffffff', map: atlas.tex, roughness: 0.86 })
+        : null,
+    [atlas],
+  )
+  useEffect(() => {
+    if (!spineMaterial) return
+    return () => spineMaterial.dispose()
+  }, [spineMaterial])
 
   const oak = useMemo(() => makeWood('#5e4128', '#281909', 5), [])
   const oakDark = useMemo(() => makeWood('#4a3220', '#1d1208', 9), [])
@@ -251,15 +364,14 @@ export default function Bookcase() {
               <ShelfBook
                 key={slot.book.id}
                 slot={slot}
-                spine={spines?.get(slot.book.id) ?? null}
+                uv={atlas?.uv.get(slot.book.id) ?? null}
+                spineMaterial={spineMaterial}
                 interactive={open}
                 hidden={slot.book.id === selectedId}
               />
             ))}
 
-            {ends.map((e) => (
-              <Bookend key={`${e.x}-${e.y}`} x={e.x} y={e.y} />
-            ))}
+            <Bookends ends={ends} />
 
             <SecretVolume />
             <CaseFittings />
@@ -282,6 +394,34 @@ export default function Bookcase() {
 function Carcass({ oak, oakDark }: { oak: CanvasTexture; oakDark: CanvasTexture }) {
   const half = CASE.w / 2
   const stileH = CASE.h - CASE.plinth - 0.08
+
+  /* Every board here is static furniture — never moves, never
+     interactive — so the two stiles and the five shelf boards + top
+     board (all sharing one oak material each) are baked and merged
+     into one draw call apiece instead of 2 and 6. Materials still come
+     from the shared oak/oakDark canvas textures passed down from
+     Bookcase, so this costs zero extra texture memory. */
+  const stilesGeom = useMemo(
+    () =>
+      mergeGeometries(
+        [-1, 1].map((s) =>
+          bakedBox(CASE.side, stileH, CASE.d, s * (half - CASE.side / 2), CASE.plinth + stileH / 2, 0),
+        ),
+        false,
+      ),
+    [half, stileH],
+  )
+  useEffect(() => () => stilesGeom?.dispose(), [stilesGeom])
+
+  const shelvesGeom = useMemo(() => {
+    const boards = SHELF_Y.map((y) =>
+      bakedBox(CASE.w - CASE.side, CASE.board, CASE.d - 0.02, 0, y - CASE.board / 2, 0.006),
+    )
+    boards.push(bakedBox(CASE.w - CASE.side, CASE.board, CASE.d - 0.02, 0, CASE.h - 0.075, 0))
+    return mergeGeometries(boards, false)
+  }, [])
+  useEffect(() => () => shelvesGeom?.dispose(), [shelvesGeom])
+
   return (
     <group>
       {/* plinth */}
@@ -289,36 +429,26 @@ function Carcass({ oak, oakDark }: { oak: CanvasTexture; oakDark: CanvasTexture 
         <roundedBoxGeometry args={rb(CASE.w + 0.04, CASE.plinth, CASE.d + 0.02)} />
         <meshStandardMaterial map={oakDark} roughness={0.85} />
       </mesh>
-      {/* stiles */}
-      {[-1, 1].map((s) => (
-        <mesh
-          key={s}
-          position={[s * (half - CASE.side / 2), CASE.plinth + stileH / 2, 0]}
-          castShadow
-          receiveShadow
-        >
-          <roundedBoxGeometry args={rb(CASE.side, stileH, CASE.d)} />
+      {/* stiles — merged, 1 draw call for both */}
+      {stilesGeom && (
+        <mesh geometry={stilesGeom} castShadow receiveShadow>
           <meshStandardMaterial map={oak} roughness={0.8} />
         </mesh>
-      ))}
+      )}
       {/* back panel */}
       <mesh position={[0, CASE.plinth + stileH / 2, -CASE.d / 2 + 0.008]} receiveShadow>
         <roundedBoxGeometry args={rb(CASE.w - CASE.side, stileH, 0.016)} />
         <meshStandardMaterial map={oakDark} roughness={0.95} />
       </mesh>
-      {/* shelf boards — SHELF_Y[0] doubles as the base board, so there is
-          no second slab coplanar with it */}
-      {SHELF_Y.map((y) => (
-        <mesh key={y} position={[0, y - CASE.board / 2, 0.006]} castShadow receiveShadow>
-          <roundedBoxGeometry args={rb(CASE.w - CASE.side, CASE.board, CASE.d - 0.02)} />
+      {/* shelf boards + top board — merged, 1 draw call for all six.
+          SHELF_Y[0] doubles as the base board, so there is no second
+          slab coplanar with it */}
+      {shelvesGeom && (
+        <mesh geometry={shelvesGeom} castShadow receiveShadow>
           <meshStandardMaterial map={oak} roughness={0.82} />
         </mesh>
-      ))}
-      {/* top board + cornice */}
-      <mesh position={[0, CASE.h - 0.075, 0]} castShadow receiveShadow>
-        <roundedBoxGeometry args={rb(CASE.w - CASE.side, CASE.board, CASE.d - 0.02)} />
-        <meshStandardMaterial map={oak} roughness={0.82} />
-      </mesh>
+      )}
+      {/* cornice */}
       <mesh position={[0, CASE.h - 0.03, 0.012]} castShadow>
         <roundedBoxGeometry args={rb(CASE.w + 0.06, 0.045, CASE.d + 0.03)} />
         <meshStandardMaterial map={oakDark} roughness={0.75} />
@@ -369,7 +499,10 @@ function SecretRecess({ open }: { open: boolean }) {
     const m = mat.current
     if (!m) return
     const g = m.material as { opacity: number }
-    g.opacity = MathUtils.damp(g.opacity, open ? 0.85 : 0, 4, Math.min(delta, 0.05))
+    const want = open ? 0.85 : 0
+    if (g.opacity === want) return
+    g.opacity = MathUtils.damp(g.opacity, want, 4, Math.min(delta, 0.05))
+    if (Math.abs(g.opacity - want) < 0.002) g.opacity = want
   })
   return (
     <group position={[-0.18, 0.9, -CASE.d / 2 - 0.01]}>
@@ -381,7 +514,16 @@ function SecretRecess({ open }: { open: boolean }) {
         <planeGeometry args={[stripW, stripW / strip.aspect]} />
         <meshBasicMaterial map={strip.tex} transparent toneMapped={false} />
       </mesh>
-      <pointLight position={[0, 0, 0.14]} color="#33ff66" intensity={open ? 0.5 : 0} distance={0.7} />
+      {/* NB: no `visible` gating — see CornerFill's comment: toggling a
+          light's visibility recompiles shader variants scene-wide, and
+          this one is binary already (no damping) so there's no idle
+          per-frame cost to early-out of either. */}
+      <pointLight
+        position={[0, 0, 0.14]}
+        color="#33ff66"
+        intensity={open ? 0.5 : 0}
+        distance={0.7}
+      />
     </group>
   )
 }
@@ -391,12 +533,14 @@ function SecretRecess({ open }: { open: boolean }) {
    --------------------------------------------------------------------- */
 function ShelfBook({
   slot,
-  spine,
+  uv,
+  spineMaterial,
   interactive,
   hidden,
 }: {
   slot: Slot
-  spine: CanvasTexture | null
+  uv: { u0: number; v0: number; u1: number; v1: number } | null
+  spineMaterial: MeshStandardMaterial | null
   interactive: boolean
   hidden: boolean
 }) {
@@ -409,13 +553,34 @@ function ShelfBook({
 
   const z = CASE_FRONT - 0.022 - dims.deep / 2
 
+  /* board + spine geometry, built once per book and re-cut only when
+     its own atlas cell changes (open/close) — UVs baked in so every
+     lettered book can still share ONE material for the shared atlas
+     texture instead of minting its own. */
+  const boardGeom = useMemo(() => {
+    const args = rb(dims.thick, dims.tall, dims.deep * 0.99)
+    const g = new RoundedBoxGeometry(...args)
+    if (uv) remapAtlasUV(g, uv)
+    return g
+  }, [dims.thick, dims.tall, dims.deep, uv])
+  useEffect(() => () => boardGeom.dispose(), [boardGeom])
+
+  const boardMaterial = uv && spineMaterial ? spineMaterial : clothMaterial(ink.cloth)
+
   useFrame((_, delta) => {
     const g = grp.current
     if (!g) return
-    const dt = Math.min(delta, 0.05)
     const want = hidden ? 0 : hovered && interactive ? 1 : 0
-    peek.current = MathUtils.damp(peek.current, want, 9, dt)
-    enter.current = MathUtils.damp(enter.current, 1, 6, dt)
+    // idle once fully entered and settled at the target peek — no point
+    // re-damping (and rewriting the transform) forever at rest
+    if (enter.current === 1 && peek.current === want) return
+
+    const dt = Math.min(delta, 0.05)
+    const nextPeek = MathUtils.damp(peek.current, want, 9, dt)
+    const nextEnter = MathUtils.damp(enter.current, 1, 6, dt)
+    peek.current = Math.abs(nextPeek - want) < 1e-4 ? want : nextPeek
+    enter.current = nextEnter >= 0.999 ? 1 : nextEnter
+
     const p = peek.current
     g.position.z = z + p * PEEK - (1 - enter.current) * 0.16
     g.rotation.x = p * 0.1
@@ -437,30 +602,29 @@ function ShelfBook({
           onPointerOver={() => setHovered(true)}
           onPointerOut={() => setHovered(false)}
         >
-          {/* the block of pages */}
-          <mesh position={[0, dims.tall / 2, -0.004]} castShadow>
+          {/* the block of pages — identical putty colour on every
+              volume, so all 113 share one material */}
+          <mesh
+            position={[0, dims.tall / 2, -0.004]}
+            castShadow
+            material={PAGE_MATERIAL}
+          >
             <roundedBoxGeometry args={rb(dims.thick * 0.82, dims.tall * 0.96, dims.deep)} />
-            <meshStandardMaterial color="#e6dcc2" roughness={0.95} />
           </mesh>
           {/* boards + spine */}
-          <mesh position={[0, dims.tall / 2, 0]} castShadow>
-            <roundedBoxGeometry args={rb(dims.thick, dims.tall, dims.deep * 0.99)} />
-            {/* the key rebuilds the material when the stamped spine
-                arrives: three compiles map support into the shader at
-                creation, so patching .map onto a plain material later
-                would leave the title invisible */}
-            <meshStandardMaterial
-              key={spine ? 'lettered' : 'plain'}
-              color={spine ? '#ffffff' : ink.cloth}
-              map={spine ?? undefined}
-              roughness={0.86}
-            />
-          </mesh>
+          <mesh
+            position={[0, dims.tall / 2, 0]}
+            castShadow
+            geometry={boardGeom}
+            material={boardMaterial}
+          />
           {/* ribbon marker for whatever is being read right now */}
           {book.status === 'reading' && (
-            <mesh position={[0, dims.tall * 0.18, dims.deep / 2 - 0.004]}>
+            <mesh
+              position={[0, dims.tall * 0.18, dims.deep / 2 - 0.004]}
+              material={RIBBON_MATERIAL}
+            >
               <planeGeometry args={[dims.thick * 0.4, dims.tall * 0.42]} />
-              <meshStandardMaterial color="#b5220a" roughness={0.7} side={DoubleSide} />
             </mesh>
           )}
         </group>
@@ -469,19 +633,47 @@ function ShelfBook({
   )
 }
 
-/** Brass bookend holding a short row upright. */
-function Bookend({ x, y }: { x: number; y: number }) {
+/** Brass bookends holding each short row upright — static decor, so
+    every end's base merges into one draw call and every end's upright
+    merges into another, regardless of how many shelves are in use
+    (was 2 draw calls per end). */
+function Bookends({ ends }: { ends: { x: number; y: number }[] }) {
+  const baseGeom = useMemo(
+    () =>
+      ends.length
+        ? mergeGeometries(
+            ends.map((e) => bakedBox(0.03, 0.008, 0.1, e.x + 0.014, e.y + 0.004, CASE_FRONT - 0.09)),
+            false,
+          )
+        : null,
+    [ends],
+  )
+  const uprightGeom = useMemo(
+    () =>
+      ends.length
+        ? mergeGeometries(
+            ends.map((e) => bakedBox(0.005, 0.11, 0.1, e.x + 0.002, e.y + 0.055, CASE_FRONT - 0.09)),
+            false,
+          )
+        : null,
+    [ends],
+  )
+  useEffect(() => () => baseGeom?.dispose(), [baseGeom])
+  useEffect(() => () => uprightGeom?.dispose(), [uprightGeom])
+
   return (
-    <group position={[x, y, CASE_FRONT - 0.09]}>
-      <mesh position={[0.014, 0.004, 0]} castShadow>
-        <roundedBoxGeometry args={rb(0.03, 0.008, 0.1)} />
-        <meshStandardMaterial color="#8a6a12" metalness={0.6} roughness={0.45} />
-      </mesh>
-      <mesh position={[0.002, 0.055, 0]} castShadow>
-        <roundedBoxGeometry args={rb(0.005, 0.11, 0.1)} />
-        <meshStandardMaterial color="#c9a227" metalness={0.7} roughness={0.35} />
-      </mesh>
-    </group>
+    <>
+      {baseGeom && (
+        <mesh geometry={baseGeom} castShadow>
+          <meshStandardMaterial color="#8a6a12" metalness={0.6} roughness={0.45} />
+        </mesh>
+      )}
+      {uprightGeom && (
+        <mesh geometry={uprightGeom} castShadow>
+          <meshStandardMaterial color="#c9a227" metalness={0.7} roughness={0.35} />
+        </mesh>
+      )}
+    </>
   )
 }
 
@@ -518,7 +710,9 @@ function SecretVolume() {
   )
 }
 
-/** A leaning stack on the floor beside the case — pure decor. */
+/** A leaning stack on the floor beside the case — pure decor, static
+    and non-interactive, so the four differently-tinted volumes merge
+    into one vertex-coloured draw call instead of four. */
 function FloorStack({ oak }: { oak: CanvasTexture }) {
   const stack = useMemo(
     () => [
@@ -529,26 +723,31 @@ function FloorStack({ oak }: { oak: CanvasTexture }) {
     ],
     [],
   )
-  let y = 0
+  const stackGeom = useMemo(() => {
+    let y = 0
+    const parts = stack.map((b) => {
+      const py = y + b.h / 2
+      y += b.h
+      return bakedBoxTinted(b.w, b.h, b.d, 0, py, 0, b.c, b.r)
+    })
+    return mergeGeometries(parts, false)
+  }, [stack])
+  useEffect(() => () => stackGeom?.dispose(), [stackGeom])
+
   return (
     <group position={[0.56, 0, 0.04]} rotation-y={-0.5}>
-      {stack.map((b, i) => {
-        const py = y + b.h / 2
-        y += b.h
-        return (
-          <mesh key={i} position={[0, py, 0]} rotation-y={b.r} castShadow receiveShadow>
-            <roundedBoxGeometry args={rb(b.w, b.h, b.d)} />
-            <meshStandardMaterial color={b.c} roughness={0.9} />
-          </mesh>
-        )
-      })}
+      {stackGeom && (
+        <mesh geometry={stackGeom} castShadow receiveShadow>
+          <meshStandardMaterial vertexColors roughness={0.9} />
+        </mesh>
+      )}
       {/* a mug nobody has taken back to the kitchen */}
       <mesh position={[0.11, 0.035, 0.08]} castShadow>
-        <cylinderGeometry args={[0.032, 0.028, 0.07, 14]} />
+        <cylinderGeometry args={[0.032, 0.028, 0.07, 10]} />
         <meshStandardMaterial color={P.chassis} roughness={0.55} />
       </mesh>
       <mesh position={[0.11, 0.069, 0.08]}>
-        <cylinderGeometry args={[0.027, 0.027, 0.004, 14]} />
+        <cylinderGeometry args={[0.027, 0.027, 0.004, 10]} />
         <meshStandardMaterial color="#3a2416" roughness={0.3} />
       </mesh>
       <mesh position={[0, 0.002, 0]} rotation-x={-Math.PI / 2} receiveShadow>
@@ -705,7 +904,16 @@ function CornerFill({ open }: { open: boolean }) {
   useFrame((_, delta) => {
     const l = light.current
     if (!l) return
-    l.intensity = MathUtils.damp(l.intensity, open ? 2.4 : 0, 3, Math.min(delta, 0.05))
+    // NB: deliberately NOT gating `visible` here — toggling a light's
+    // visibility changes the scene's active light count, which forces
+    // three to recompile a shader variant for every affected material
+    // (measured: +82 programs on open). At intensity 0 this light costs
+    // a per-fragment loop iteration, not a recompile storm; early-out
+    // once settled is the safe win.
+    const want = open ? 2.4 : 0
+    if (l.intensity === want) return
+    l.intensity = MathUtils.damp(l.intensity, want, 3, Math.min(delta, 0.05))
+    if (Math.abs(l.intensity - want) < 0.01) l.intensity = want
   })
   return (
     <pointLight
@@ -731,6 +939,8 @@ function DustPuff() {
   )
 
   useFrame((_, delta) => {
+    // fully dispersed (opacity already 0 at t=1) — stop recomputing
+    if (life.current >= 1) return
     life.current = Math.min(1, life.current + delta * 0.9)
     const t = life.current
     motes.current.forEach((m, i) => {

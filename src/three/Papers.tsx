@@ -439,11 +439,16 @@ export default function Papers() {
           }}
         >
           {/* a ream's worth of sheets, none quite square with the others */}
-          <mesh geometry={looks.sheets} receiveShadow castShadow>
+          <mesh
+            geometry={looks.sheets}
+            receiveShadow
+            castShadow
+            matrixAutoUpdate={false}
+          >
             <meshStandardMaterial vertexColors roughness={0.92} />
           </mesh>
           {/* the printout on top */}
-          <mesh geometry={looks.top} receiveShadow>
+          <mesh geometry={looks.top} receiveShadow matrixAutoUpdate={false}>
             <meshStandardMaterial
               map={printTex}
               roughness={0.9}
@@ -457,7 +462,7 @@ export default function Papers() {
             position={[0.045, STACK_TOP + 0.0045, 0.055]}
             rotation={[Math.PI / 2, 0, 0.9]}
           >
-            <mesh geometry={looks.pen} castShadow>
+            <mesh geometry={looks.pen} castShadow matrixAutoUpdate={false}>
               <meshPhysicalMaterial
                 vertexColors
                 roughness={0.32}
@@ -465,7 +470,11 @@ export default function Papers() {
                 clearcoatRoughness={0.2}
               />
             </mesh>
-            <mesh geometry={looks.penMetal} castShadow>
+            <mesh
+              geometry={looks.penMetal}
+              castShadow
+              matrixAutoUpdate={false}
+            >
               <meshStandardMaterial
                 color="#c4c9d1"
                 metalness={1}

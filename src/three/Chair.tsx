@@ -656,9 +656,12 @@ export default function Chair() {
   )
 
   useFrame((_, delta) => {
+    const sp = spin.current
+    // once the swivel has settled, stop integrating it every frame —
+    // rotation/lean are already at rest, so there is nothing to redraw
+    if (Math.abs(sp.v) < 1e-4 && Math.abs(sp.target - sp.x) < 1e-4) return
     const dt = Math.min(delta, 0.05)
     // underdamped swivel — overshoots, wobbles, settles
-    const sp = spin.current
     sp.v += (26 * (sp.target - sp.x) - 4.2 * sp.v) * dt
     sp.x += sp.v * dt
     const g = rig.current
@@ -684,7 +687,7 @@ export default function Chair() {
         >
           <group ref={rig}>
             {/* upholstery: woven charcoal-blue with a velvety sheen */}
-            <mesh geometry={geo.fabric} castShadow receiveShadow>
+            <mesh geometry={geo.fabric} castShadow receiveShadow matrixAutoUpdate={false}>
               <meshPhysicalMaterial
                 vertexColors
                 map={res.fab.map}
@@ -698,7 +701,7 @@ export default function Chair() {
               />
             </mesh>
             {/* moulded plastics: back shell, spine, arms, mechanism */}
-            <mesh geometry={geo.plastic} castShadow receiveShadow>
+            <mesh geometry={geo.plastic} castShadow receiveShadow matrixAutoUpdate={false}>
               <meshStandardMaterial
                 vertexColors
                 color="#2a2d33"
@@ -709,7 +712,7 @@ export default function Chair() {
               />
             </mesh>
             {/* lever, screws, piston collar */}
-            <mesh geometry={geo.chrome} castShadow>
+            <mesh geometry={geo.chrome} castShadow matrixAutoUpdate={false}>
               <meshStandardMaterial
                 color="#b4b9c2"
                 metalness={1}
@@ -718,7 +721,7 @@ export default function Chair() {
             </mesh>
           </group>
           {/* base and column stay put while the seat swivels */}
-          <mesh geometry={geo.nylon} castShadow receiveShadow>
+          <mesh geometry={geo.nylon} castShadow receiveShadow matrixAutoUpdate={false}>
             <meshStandardMaterial
               color="#1d1f23"
               normalMap={res.nyl.normalMap}
@@ -727,7 +730,7 @@ export default function Chair() {
               roughness={0.85}
             />
           </mesh>
-          <mesh geometry={geo.wheels} castShadow>
+          <mesh geometry={geo.wheels} castShadow matrixAutoUpdate={false}>
             <meshStandardMaterial
               vertexColors
               color="#ffffff"

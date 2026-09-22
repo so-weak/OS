@@ -62,7 +62,10 @@ function CataloguePlate({ enabled }: { enabled: boolean }) {
   useFrame((_, delta) => {
     const m = mat.current
     if (!m) return
-    glow.current = MathUtils.damp(glow.current, enabled ? 0.45 : 0.1, 4, Math.min(delta, 0.05))
+    const want = enabled ? 0.45 : 0.1
+    if (glow.current === want) return
+    glow.current = MathUtils.damp(glow.current, want, 4, Math.min(delta, 0.05))
+    if (Math.abs(glow.current - want) < 0.002) glow.current = want
     m.emissiveIntensity = glow.current
   })
 
@@ -113,8 +116,14 @@ function PictureLight({ open }: { open: boolean }) {
   useFrame((_, delta) => {
     const s = spot.current
     if (!s) return
+    // NB: deliberately not gating `visible` — see Bookcase.tsx's
+    // CornerFill comment: toggling a light's visibility changes the
+    // scene's active light count and forces a scene-wide shader
+    // recompile (measured). Early-out once settled is the safe win.
     const want = on ? (open ? 2.4 : 0.5) : 0
+    if (s.intensity === want) return
     s.intensity = MathUtils.damp(s.intensity, want, 3.5, Math.min(delta, 0.05))
+    if (Math.abs(s.intensity - want) < 0.01) s.intensity = want
   })
 
   return (
@@ -132,7 +141,7 @@ function PictureLight({ open }: { open: boolean }) {
           <meshStandardMaterial color="#c9a227" metalness={0.75} roughness={0.35} />
         </mesh>
         <mesh position={[0, 0.012, 0.028]} rotation={[Math.PI, 0, Math.PI / 2]}>
-          <cylinderGeometry args={[0.028, 0.028, 0.3, 14, 1, true, 0, Math.PI]} />
+          <cylinderGeometry args={[0.028, 0.028, 0.3, 10, 1, true, 0, Math.PI]} />
           <meshStandardMaterial color="#2f4f3a" metalness={0.4} roughness={0.5} side={2} />
         </mesh>
       </Clickable>

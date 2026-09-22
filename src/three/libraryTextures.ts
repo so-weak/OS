@@ -1,4 +1,4 @@
-import type { CanvasTexture } from 'three'
+import { LinearFilter, type CanvasTexture } from 'three'
 import type { Book } from '../data/library'
 import {
   bookplateCanvas,
@@ -23,6 +23,63 @@ export type { BookDims, BookInk } from '../library/art'
 /** The stamped spine, as it reads on the shelf. */
 export function makeSpine(b: Book): CanvasTexture {
   return wrap(spineCanvas(b))
+}
+
+export interface SpineAtlas {
+  /** one shared texture, all shelved spines baked into a grid */
+  tex: CanvasTexture
+  /** book id -> this book's cell, as a 0..1 UV rect */
+  uv: Map<string, { u0: number; v0: number; u1: number; v1: number }>
+  dispose(): void
+}
+
+const ATLAS_PAD = 3
+
+/**
+ * Every stamped spine in one texture instead of one canvas (and one GPU
+ * upload) per book: each volume still gets its own drawing (the title
+ * differs), but they land as tiles in a shared sheet, so 113 shelved
+ * books can share ONE material instead of ~110 distinct ones. Cheap
+ * enough to rebuild on open/close — same lifetime as the old per-book
+ * textures it replaces.
+ */
+export function makeSpineAtlas(list: Book[]): SpineAtlas {
+  if (list.length === 0) {
+    const ctx = makeCanvas(2, 2)
+    return { tex: finish(ctx, false), uv: new Map(), dispose: () => {} }
+  }
+  const cells = list.map((b) => ({ book: b, canvas: spineCanvas(b) }))
+  const maxW = Math.max(...cells.map((c) => c.canvas.width))
+  const maxH = Math.max(...cells.map((c) => c.canvas.height))
+  const cellW = maxW + ATLAS_PAD * 2
+  const cellH = maxH + ATLAS_PAD * 2
+  // pack close to a square in actual pixels, not cell counts, so a
+  // sheet of mostly-tall narrow spines doesn't end up a skyscraper
+  const cols = Math.max(1, Math.round(Math.sqrt((cells.length * cellH) / cellW)))
+  const rows = Math.ceil(cells.length / cols)
+  const atlasW = cols * cellW
+  const atlasH = rows * cellH
+  const ctx = makeCanvas(atlasW, atlasH)
+  const uv = new Map<string, { u0: number; v0: number; u1: number; v1: number }>()
+  cells.forEach(({ book, canvas }, i) => {
+    const col = i % cols
+    const row = Math.floor(i / cols)
+    const x = col * cellW + ATLAS_PAD + (maxW - canvas.width) / 2
+    const y = row * cellH + ATLAS_PAD + (maxH - canvas.height) / 2
+    ctx.drawImage(canvas, x, y)
+    uv.set(book.id, {
+      u0: x / atlasW,
+      v0: 1 - (y + canvas.height) / atlasH,
+      u1: (x + canvas.width) / atlasW,
+      v1: 1 - y / atlasH,
+    })
+  })
+  const tex = finish(ctx, false)
+  // spines are read close-up and never minified far enough for mip
+  // banding to matter; skipping mips avoids bleed across atlas cells
+  tex.generateMipmaps = false
+  tex.minFilter = LinearFilter
+  return { tex, uv, dispose: () => tex.dispose() }
 }
 
 /** The front board of a volume held up to the camera. */

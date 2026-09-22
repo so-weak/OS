@@ -693,6 +693,7 @@ export default function Keyboard() {
   }, [codeIndex])
 
   useFrame((_, delta) => {
+    ledMatRef.current.emissiveIntensity = useSystem.getState().power !== 'off' ? 1.3 : 0
     const dt = Math.min(delta, 0.05)
     const c = capsRef.current
     const l = legendsRef.current
@@ -720,6 +721,18 @@ export default function Keyboard() {
   const ledOn = powered ? 1.3 : 0
   const ledY = H + 0.0016
   const ledZ = -D / 2 + 0.0095
+
+  /* the three lock LEDs are visually identical (same colour, same
+     emissiveIntensity always) — one shared material instead of three.
+     Built once via useMemo; mutated through a ref alias (matching the
+     caps/legends pattern above) so per-frame writes don't touch the
+     memoized binding directly. */
+  const ledMat = useMemo(
+    () => new MeshStandardMaterial({ color: '#1c2f14', emissive: P.ledGreen }),
+    [],
+  )
+  const ledMatRef = useRef(ledMat)
+  useEffect(() => () => ledMat.dispose(), [ledMat])
 
   return (
     <group position={KBD_POS} rotation-y={KBD_YAW}>
@@ -750,16 +763,11 @@ export default function Keyboard() {
             <meshBasicMaterial map={lockIcons} transparent toneMapped={false} depthWrite={false} polygonOffset polygonOffsetFactor={-2} />
           </mesh>
 
-          {/* lock LEDs, lit while the machine runs */}
+          {/* lock LEDs, lit while the machine runs — one shared material */}
           {LED_X.map((x) => (
             <group key={x} position={[x, ledY, ledZ - 0.0015]}>
-              <mesh>
+              <mesh material={ledMat}>
                 <roundedBoxGeometry args={rb(0.0065, 0.0016, 0.0028, 0.0006, 2)} />
-                <meshStandardMaterial
-                  color="#1c2f14"
-                  emissive={P.ledGreen}
-                  emissiveIntensity={ledOn}
-                />
               </mesh>
               <Halo
                 color={P.ledGreen}

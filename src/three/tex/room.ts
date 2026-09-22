@@ -1869,8 +1869,12 @@ export function plantLayout(seed = 12, count = 24): {
   return { stem, leaves }
 }
 
-/** Terracotta pot (lathe) with a fat rim; the saucer under it. */
-export function potGeo(): { pot: BufferGeometry; saucer: BufferGeometry } {
+/** Terracotta pot (lathe) with a fat rim, over its saucer — both neither
+    map nor differ by anything but flat colour, so they weld into ONE
+    vertex-coloured mesh (was two draw calls / two materials). The pot's
+    +0.012 lift (it used to sit in its own offset group) is baked into
+    its geometry so the merge stays a single static transform. */
+export function potGeo(): BufferGeometry {
   const outer: [number, number][] = [
     [0.0, 0.0],
     [0.068, 0.0],
@@ -1887,6 +1891,8 @@ export function potGeo(): { pot: BufferGeometry; saucer: BufferGeometry } {
     [0.0, 0.186],
   ]
   const pot = new LatheGeometry(outer.map(([r, y]) => new Vector2(r, y)), 40)
+  tint(pot, '#b4643b')
+  place(pot, 0, 0.012, 0)
   const dish: [number, number][] = [
     [0.0, 0.0],
     [0.1, 0.0],
@@ -1898,7 +1904,8 @@ export function potGeo(): { pot: BufferGeometry; saucer: BufferGeometry } {
     [0.0, 0.008],
   ]
   const saucer = new LatheGeometry(dish.map(([r, y]) => new Vector2(r, y)), 40)
-  return { pot, saucer }
+  tint(saucer, '#8f4c2c')
+  return weld([pot, saucer])
 }
 
 /* ---------------------------------------------------------------------

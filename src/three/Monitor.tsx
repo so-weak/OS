@@ -662,8 +662,12 @@ export default function Monitor() {
     )
     glowMat.current.opacity =
       level.current * 0.3 * flicker * (0.55 + 0.45 * knob) * roomMix.current
-    glowLight.current.intensity =
-      level.current * 1.6 * flicker * (0.55 + 0.45 * knob)
+    const glowI = level.current * 1.6 * flicker * (0.55 + 0.45 * knob)
+    glowLight.current.intensity = glowI
+    // off entirely (not just intensity 0) while the tube is dark — one
+    // fewer light in every material's shading loop for the whole time
+    // before the machine is first powered on
+    glowLight.current.visible = glowI > 0.01
     ledMat.current.emissiveIntensity = MathUtils.damp(
       ledMat.current.emissiveIntensity,
       powered ? 1.8 : 0,

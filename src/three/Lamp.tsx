@@ -503,7 +503,7 @@ export default function Lamp() {
         }}
       >
         {/* cast base, turret cheeks and the dome shade: green enamel */}
-        <mesh geometry={geo.enamel} castShadow receiveShadow>
+        <mesh geometry={geo.enamel} castShadow receiveShadow matrixAutoUpdate={false}>
           <meshPhysicalMaterial
             color="#1f5a45"
             roughness={0.42}
@@ -515,7 +515,7 @@ export default function Lamp() {
           />
         </mesh>
         {/* rubber ring, rods, hubs, rocker */}
-        <mesh geometry={geo.dark} castShadow>
+        <mesh geometry={geo.dark} castShadow matrixAutoUpdate={false}>
           <meshStandardMaterial
             color="#1a1c1f"
             metalness={0.55}
@@ -523,7 +523,7 @@ export default function Lamp() {
           />
         </mesh>
         {/* knurled knobs, collar, socket */}
-        <mesh geometry={geo.brass} castShadow>
+        <mesh geometry={geo.brass} castShadow matrixAutoUpdate={false}>
           <meshStandardMaterial
             color="#b58c4f"
             metalness={1}
@@ -531,7 +531,7 @@ export default function Lamp() {
           />
         </mesh>
         {/* the counterbalance springs */}
-        <mesh geometry={geo.spring}>
+        <mesh geometry={geo.spring} matrixAutoUpdate={false}>
           <meshStandardMaterial
             color="#a4a9b1"
             metalness={1}
@@ -539,7 +539,7 @@ export default function Lamp() {
           />
         </mesh>
         {/* the inside of the shade, lit warm by the bulb */}
-        <mesh geometry={geo.shadeIn}>
+        <mesh geometry={geo.shadeIn} matrixAutoUpdate={false}>
           <meshStandardMaterial
             ref={innerMat}
             color="#6e5c46"
@@ -549,19 +549,20 @@ export default function Lamp() {
             roughness={0.7}
           />
         </mesh>
-        {/* glass envelope */}
-        <mesh geometry={geo.glass}>
-          <meshPhysicalMaterial
+        {/* glass envelope — tiny and almost fully transparent, so the
+            clearcoat layer a Physical material would add here never reads;
+            Standard gets the same soft highlight from roughness alone */}
+        <mesh geometry={geo.glass} matrixAutoUpdate={false}>
+          <meshStandardMaterial
             color="#fff6e4"
             transparent
             opacity={0.2}
             roughness={0.04}
-            clearcoat={1}
             depthWrite={false}
           />
         </mesh>
         {/* hot filament */}
-        <mesh geometry={geo.glow}>
+        <mesh geometry={geo.glow} matrixAutoUpdate={false}>
           <meshStandardMaterial
             ref={bulbMat}
             color="#fff4dc"

@@ -165,7 +165,7 @@ function detectChange(s: Sched): boolean {
     const sig = t.sig
     /* how far has the shape's silhouette moved since the pose we last
        drew? translation plus the rotation/scale of the three axes
-       reaching out to the bounding radius. Sub-2 mm idle sway (labubu,
+       reaching out to the bounding radius. Sub-2 mm idle sway (the duck,
        a swinging cord) never asks for a redraw, but accumulates: the
        pose only advances when a redraw is due. */
     let dr = 0
