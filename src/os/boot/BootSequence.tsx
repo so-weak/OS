@@ -79,10 +79,10 @@ const DEVICE_LINES: PostLine[] = [
   { key: 'projects', text: `Portfolio volumes : ${projects.length} projects`, status: 'MOUNTED', tone: 'ok' },
   { key: 'board', text: `Board-presentation module (${silverStar})`, status: 'LOADED', tone: 'ok' },
   { key: 'liveness', text: 'Anti-spoofing liveness probe', status: 'HUMAN', tone: 'ok' },
-  { key: 'caffeine', text: 'Caffeine controller', status: 'CRITICAL', tone: 'warn', note: '(operating normally)' },
+  { key: 'caffeine', text: 'Caffeine controller', status: 'OFFLINE', tone: 'warn', note: '(insomniac: chai only)' },
 ]
 
-/** the quick boot keeps the operator, the resume, and the coffee */
+/** the quick boot keeps the operator, the resume, and the chai joke */
 const QUICK_KEYS = ['projects', 'caffeine']
 
 /** The POST, decided at power-on: who is here, whether they have been
@@ -108,7 +108,7 @@ const SPLASH_STATUS: string[] = [
   'Loading window manager…',
   'Mounting resume.pdf…',
   `Indexing ${projects.length} projects…`,
-  'Negotiating with caffeine controller…',
+  'Steeping the chai…',
 ]
 
 const BIOS_STAMP = `${new Date().toLocaleDateString('en-GB')} · SBIOS-4.01 · ${identity.name}`

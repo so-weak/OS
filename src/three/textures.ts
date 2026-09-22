@@ -318,7 +318,7 @@ export function makeDocument(title: string, paragraphs: string[]): CanvasTexture
     ctx.arc(26, y, 9, 0, Math.PI * 2)
     ctx.fill()
   })
-  // faint coffee ring
+  // faint chai ring
   ctx.strokeStyle = 'rgba(107, 74, 47, 0.16)'
   ctx.lineWidth = 7
   ctx.beginPath()

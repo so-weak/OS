@@ -4,6 +4,8 @@ import { ContactShadows } from '@react-three/drei'
 import {
   CanvasTexture,
   CatmullRomCurve3,
+  Color,
+  MathUtils,
   Object3D,
   SRGBColorSpace,
   Vector3,
@@ -48,7 +50,7 @@ import {
 import { rb } from './rbox'
 
 /* =====================================================================
-   The desk itself plus desk props: the live mouse + pad, a coffee mug
+   The desk itself plus desk props: the live mouse + pad, a mug of chai
    that steams (and jiggles when poked), and the cable runs that tie the
    hardware together. The drawer pedestal lives in Drawers.tsx; the
    paper stack in Papers.tsx.
@@ -313,7 +315,7 @@ function Nameplate() {
   )
 }
 
-/* ---------- coffee mug: steams gently, jiggles when poked ---------- */
+/* ---------- chai mug: steams gently, jiggles when poked ---------- */
 const PUFFS = 4
 
 const MUG_H = 0.09
@@ -322,7 +324,7 @@ const mugOuter = (y: number): number =>
   0.0304 + (0.0058 * Math.sin(Math.min(1, y / MUG_H) * 1.4)) / Math.sin(1.4)
 const mugInner = (y: number): number => 0.029 + 0.0359 * (y - 0.01)
 
-function buildMug(): { body: BufferGeometry; coffee: BufferGeometry } {
+function buildMug(): { body: BufferGeometry; chai: BufferGeometry } {
   /* one profile, walked outside-up, over the rolled rim, inside-down */
   const yTop = 0.0866
   const wall: [number, number][] = []
@@ -390,21 +392,58 @@ function buildMug(): { body: BufferGeometry; coffee: BufferGeometry } {
   })
   tint(handle, '#a63c2e')
 
-  // walked from the wall in to the middle so the surface faces up
-  const cprof: [number, number][] = [
+  /* the chai: opaque, milky masala tea. Walked from the wall in to the
+     middle so the surface faces up; the first three points are the
+     meniscus. The profile is resampled finely so the vertex colours can
+     carry a pale milk-skin ring and a few tea-leaf flecks. */
+  const surface: [number, number][] = [
     [0.0318, 0.0762],
     [0.0307, 0.0744],
     [0.0292, 0.0734],
     [0.024, 0.0729],
     [0, 0.0728],
   ]
-  const coffee = lathe(cprof, { segments: 40, crease: 3 })
-  paint(coffee, (p, _n, c) => {
-    const r = Math.hypot(p.x, p.z) / 0.0307
-    const k = Math.min(1, Math.max(0, (r - 0.55) / 0.45))
-    c.setRGB(0.015 + 0.06 * k, 0.007 + 0.03 * k, 0.003 + 0.012 * k)
+  const cprof: [number, number][] = []
+  for (let i = 0; i < surface.length - 1; i++) {
+    const [r0, y0] = surface[i]
+    const [r1, y1] = surface[i + 1]
+    const n = Math.max(1, Math.round((r0 - r1) / 0.0016))
+    for (let k = 0; k < n; k++) {
+      const f = k / n
+      cprof.push([r0 + (r1 - r0) * f, y0 + (y1 - y0) * f])
+    }
+  }
+  cprof.push(surface[surface.length - 1])
+  const chai = lathe(cprof, { segments: 96, crease: 3 })
+
+  const CHAI_R = 0.0318 // radius where the surface meets the wall
+  const chaiMid = new Color('#e39851') // caramel-tan body
+  const chaiRim = new Color('#f5be80') // lighter toward the edge
+  const chaiSkin = new Color('#f6e4bd') // pale milk skin at the meniscus
+  const chaiWall = new Color('#ac7040') // a shade darker against the glaze
+  const chaiFleck = new Color('#3a1f0c') // tea leaf, crushed cardamom
+  const rand = mulberry(1907)
+  const flecks = Array.from({ length: 12 }, () => {
+    const a = rand() * Math.PI * 2
+    const d = Math.sqrt(rand()) * 0.82 * CHAI_R
+    return { x: Math.sin(a) * d, z: Math.cos(a) * d, w: 0.3 + rand() * 0.3 }
   })
-  return { body: mergeParts([body, handle], true), coffee }
+  paint(chai, (p, _n, c) => {
+    const r = Math.hypot(p.x, p.z) / CHAI_R
+    const a = Math.atan2(p.z, p.x)
+    c.copy(chaiMid).lerp(chaiRim, MathUtils.smoothstep(r, 0.3, 0.85))
+    // slow swirls where the milk has not quite mixed in
+    c.multiplyScalar(
+      1 + 0.045 * Math.sin(2 * a + 8 * r) + 0.03 * Math.sin(5 * a - 13 * r),
+    )
+    c.lerp(chaiSkin, 0.95 * MathUtils.smoothstep(r, 0.83, 0.91))
+    c.lerp(chaiWall, 0.7 * MathUtils.smoothstep(r, 0.97, 1))
+    for (const f of flecks) {
+      const d = Math.hypot(p.x - f.x, p.z - f.z)
+      if (d < 0.0022) c.lerp(chaiFleck, f.w * (1 - d / 0.0022))
+    }
+  })
+  return { body: mergeParts([body, handle], true), chai }
 }
 
 /** the ring a wet mug leaves on varnish: a darker rim, an uneven edge and
@@ -468,7 +507,7 @@ function Mug() {
   useEffect(
     () => () => {
       geo.body.dispose()
-      geo.coffee.dispose()
+      geo.chai.dispose()
     },
     [geo],
   )
@@ -500,7 +539,7 @@ function Mug() {
       m.scale.set(s, s, s)
       m.quaternion.copy(state.camera.quaternion)
       const mat = m.material as MeshBasicMaterial
-      mat.opacity = (1 - cycle) * cycle * 4 * (0.1 + boost.current * 0.5)
+      mat.opacity = (1 - cycle) * cycle * 4 * (0.32 + boost.current * 0.4)
     })
   })
 
@@ -543,7 +582,7 @@ function Mug() {
       </mesh>
       <Clickable
         enabled={view === 'room'}
-        label="80 percent coffee"
+        label="100 percent chai. off coffee, insomniac"
         onActivate={() => {
           squash.current.v = -1.6
           boost.current = 1
@@ -562,14 +601,21 @@ function Mug() {
               specularIntensity={1}
             />
           </mesh>
-          {/* coffee, a dark mirror with a pale crema ring */}
-          <mesh geometry={geo.coffee}>
+          {/* chai: opaque and milky, satin rather than a mirror, with a
+              pale skin ring at the meniscus and a few tea-leaf flecks. A
+              little emissive stands in for the light that scatters through
+              milk, so it stays caramel in the dim corner instead of going
+              chocolate. */}
+          <mesh geometry={geo.chai}>
             <meshPhysicalMaterial
               vertexColors
-              roughness={0.08}
-              clearcoat={1}
-              clearcoatRoughness={0.02}
-              envMapIntensity={1.6}
+              roughness={0.36}
+              clearcoat={0.15}
+              clearcoatRoughness={0.3}
+              envMapIntensity={0.6}
+              specularIntensity={0.7}
+              emissive="#74563a"
+              emissiveIntensity={0.6}
             />
           </mesh>
         </group>
