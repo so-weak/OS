@@ -30,6 +30,8 @@ import {
   type SlabOpts,
 } from './tex/furniture'
 import { mulberry } from './textures'
+import Staged from './Staged'
+import { useStagedValue } from './stage'
 
 /* =====================================================================
    The desk chair — a proper ergonomic office chair, about 1 m tall with
@@ -626,12 +628,13 @@ function wheelGeometry(): BufferGeometry {
 
 /* ---------- component ---------- */
 
-export default function Chair() {
+function ChairBody() {
   const view = useSystem((s) => s.view)
   const rig = useRef<Group>(null!)
   const spin = useRef({ x: 0, v: 0, target: 0 })
 
-  const geo = useMemo(() => buildChair(), [])
+  // the chair's geometry is its own turn of the staged first load (stage.ts)
+  const geo = useStagedValue('chair.geo', buildChair)
   const res = useMemo(() => {
     const fab = fabricSet('#6c7b92', 5, T, 256, 2)
     const pla = plasticMaps(11, 256, 1)
@@ -641,7 +644,7 @@ export default function Chair() {
   }, [])
   useEffect(
     () => () => {
-      Object.values(geo).forEach((g) => g.dispose())
+      if (geo) Object.values(geo).forEach((g) => g.dispose())
     },
     [geo],
   )
@@ -670,6 +673,7 @@ export default function Chair() {
     g.rotation.z = MathUtils.clamp(sp.v * 0.01, -0.05, 0.05)
   })
 
+  if (!geo) return null
   return (
     /* Parked left of the paperwork on purpose: from the room camera the
        chair back sits in the gap between the bookcase and the desk props
@@ -743,5 +747,14 @@ export default function Chair() {
         </Clickable>
       </group>
     </group>
+  )
+}
+
+/* first load: mounted in its own turn of the staged build (stage.ts) */
+export default function Chair() {
+  return (
+    <Staged id="chair">
+      <ChairBody />
+    </Staged>
   )
 }

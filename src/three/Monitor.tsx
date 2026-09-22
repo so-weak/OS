@@ -796,7 +796,14 @@ export default function Monitor() {
             height: SCREEN_H,
             overflow: 'hidden',
             background: 'var(--term-bg)',
-            filter: `brightness(${KNOB_LEVELS[brightIdx]}) contrast(${KNOB_LEVELS[contrastIdx]})`,
+            // no filter at all while both knobs sit at neutral: even an
+            // identity filter makes the browser render the whole OS into
+            // an offscreen effect surface under the 3D transform, one more
+            // resample of every glyph (and a cost on every frame)
+            filter:
+              KNOB_LEVELS[brightIdx] === 1 && KNOB_LEVELS[contrastIdx] === 1
+                ? undefined
+                : `brightness(${KNOB_LEVELS[brightIdx]}) contrast(${KNOB_LEVELS[contrastIdx]})`,
           }}
         >
           <Suspense fallback={null}>

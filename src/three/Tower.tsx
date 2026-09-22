@@ -37,6 +37,8 @@ import {
   smooth,
   tintGeo,
 } from './tex/electronics'
+import Staged from './Staged'
+import { useStagedSteps } from './stage'
 
 /* =====================================================================
    The beige AT tower, built like one: a painted-steel cover under a
@@ -69,7 +71,9 @@ const POWER = { x: 0.062, y: -0.031 }
 /* ---------------------------------------------------------------------
    Shell geometry
    --------------------------------------------------------------------- */
-function buildShell(): BufferGeometry {
+/** The shell in steps: each `yield` lets a staged first load (stage.ts)
+    hand the main thread back — it is the tower's heaviest build. */
+function* buildShellSteps(): Generator<void, BufferGeometry, void> {
   const parts: BufferGeometry[] = []
   const add = (g: BufferGeometry, o: Parameters<typeof part>[1] = {}) =>
     parts.push(part(g, { color: '#ffffff', tile: 0.04, ...o }))
@@ -103,6 +107,7 @@ function buildShell(): BufferGeometry {
   })
   // moulded front bezel, proud of the cover
   slab(TOWER_SIZE.w, bodyH, 0.034, 0, bodyY, PANEL_FACE, 0.013, 0.008, '#ddd6c1')
+  yield
 
   /* --- four bays --- */
   const bay = (y: number, hole?: Parameters<typeof roundedSlab>[6]) => {
@@ -141,6 +146,8 @@ function buildShell(): BufferGeometry {
   slab(0.016, 0.0065, 0.0016, 0.056, BAY.cd - 0.0125, PANEL_FACE + 0.0041, 0.0015, 0.0005, '#d0c9b3')
   // LED socket for the CD's busy light
   slab(0.006, 0.006, 0.0007, 0.038, BAY.cd - 0.0125, PANEL_FACE + 0.0033, 0.002, 0.0002, '#1d1c1a')
+
+  yield
 
   /* --- LED / MHz strip --- */
   slab(0.156, 0.0255, 0.0008, 0, STRIP_Y, PANEL_FACE + 0.0006, 0.003, 0.0003, '#c9c2ad')
@@ -185,6 +192,8 @@ function buildShell(): BufferGeometry {
     })
   }
 
+  yield
+
   /* --- feet, seams and screws --- */
   for (const sx of [-1, 1]) {
     for (const sz of [-1, 1]) {
@@ -218,6 +227,7 @@ function buildShell(): BufferGeometry {
     }
   }
 
+  yield
   const merged = mergeParts(parts)
   // yellowing toward the top and back, plus low-frequency blotches
   tintGeo(merged, (x, y, z, out) => {
@@ -310,11 +320,13 @@ function badgeDecal() {
   })
 }
 
-export default function Tower() {
+function TowerBody() {
   const view = useSystem((s) => s.view)
   const powerOn = useSystem((s) => s.powerOn)
 
-  const shell = useMemo(() => buildShell(), [])
+  // the case shell is the heaviest build in the tower: its own turn of
+  // the staged first load (stage.ts)
+  const shell = useStagedSteps('tower.shell', buildShellSteps)
   const plastic = useMemo(() => sharedPlastic(), [])
   const mhzTex = useMemo(
     () => makeLabel('486 66', P.termGreen, '#071009', 6, 6),
@@ -327,9 +339,9 @@ export default function Tower() {
   )
   const badgeTex = useMemo(() => badgeDecal(), [])
   const dust = useMemo(() => grimeTexture(41, 512, 0.6), [])
+  useEffect(() => () => shell?.dispose(), [shell])
   useEffect(
     () => () => {
-      shell.dispose()
       plastic.dispose()
       mhzTex.dispose()
       floppyTex.dispose()
@@ -337,9 +349,10 @@ export default function Tower() {
       badgeTex.dispose()
       dust.dispose()
     },
-    [shell, plastic, mhzTex, floppyTex, cdTex, badgeTex, dust],
+    [plastic, mhzTex, floppyTex, cdTex, badgeTex, dust],
   )
 
+  if (!shell) return null
   return (
     <group position={TOWER_POS} rotation-y={TOWER_YAW}>
       {/* chassis + bezel — the whole case is a power switch (the dedicated
@@ -697,3 +710,11 @@ function Fan() {
   )
 }
 
+/* first load: mounted in its own turn of the staged build (stage.ts) */
+export default function Tower() {
+  return (
+    <Staged id="tower">
+      <TowerBody />
+    </Staged>
+  )
+}

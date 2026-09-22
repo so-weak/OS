@@ -38,6 +38,7 @@ import {
   useWood,
   woodBox,
 } from './tex/furniture'
+import Staged from './Staged'
 
 /* =====================================================================
    The desk pedestal: two drawers that actually slide open.
@@ -413,7 +414,7 @@ function buildHardware(h: number, big: boolean): BufferGeometry {
   return mergeParts(parts, true)
 }
 
-export default function Drawers() {
+function DrawersBody() {
   const view = useSystem((s) => s.view)
   const [open, setOpen] = useState<[boolean, boolean]>([false, false])
   const [note, setNote] = useState(false)
@@ -793,5 +794,14 @@ export default function Drawers() {
         )
       })}
     </group>
+  )
+}
+
+/* first load: mounted in its own turn of the staged build (stage.ts) */
+export default function Drawers() {
+  return (
+    <Staged id="drawers">
+      <DrawersBody />
+    </Staged>
   )
 }

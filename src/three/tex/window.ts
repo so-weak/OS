@@ -1034,29 +1034,39 @@ function stretchedNoise(
   const rand = mulberry(seed)
   const out = new Float32Array(size * size)
   const sm = (t: number) => t * t * (3 - 2 * t)
+  // table-driven (see fbmField in noise.ts): the x cell/weight per column
+  // once per octave, and each row blends its two lattice rows up front
+  const XA = new Int32Array(size)
+  const XB = new Int32Array(size)
+  const TX = new Float64Array(size)
   let amp = 1
   for (let o = 0; o < octaves; o++) {
     const lx = nx * 2 ** o
     const ly = ny * 2 ** o
     const g = new Float32Array(lx * ly)
     for (let i = 0; i < g.length; i++) g[i] = rand()
+    for (let x = 0; x < size; x++) {
+      const fx = (x / size) * lx
+      const x0 = Math.floor(fx)
+      TX[x] = sm(fx - x0)
+      XA[x] = x0 % lx
+      XB[x] = (x0 + 1) % lx
+    }
+    const row = new Float64Array(lx)
     for (let y = 0; y < size; y++) {
       const fy = (y / size) * ly
       const y0 = Math.floor(fy)
       const ty = sm(fy - y0)
-      const ya = y0 % ly
-      const yb = (y0 + 1) % ly
+      const ra = (y0 % ly) * lx
+      const rb = ((y0 + 1) % ly) * lx
+      for (let j = 0; j < lx; j++) {
+        const a = g[ra + j]
+        row[j] = a + (g[rb + j] - a) * ty
+      }
+      const base = y * size
       for (let x = 0; x < size; x++) {
-        const fx = (x / size) * lx
-        const x0 = Math.floor(fx)
-        const tx = sm(fx - x0)
-        const xa = x0 % lx
-        const xb = (x0 + 1) % lx
-        const a = g[ya * lx + xa]
-        const b = g[ya * lx + xb]
-        const c = g[yb * lx + xa]
-        const d = g[yb * lx + xb]
-        out[y * size + x] += amp * (a + (b - a) * tx + (c - a) * ty + (a - b - c + d) * tx * ty)
+        const a = row[XA[x]]
+        out[base + x] += amp * (a + (row[XB[x]] - a) * TX[x])
       }
     }
     amp *= persistence

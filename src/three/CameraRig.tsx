@@ -2,6 +2,7 @@ import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { MathUtils, Vector3, type PerspectiveCamera } from 'three'
 import { useSystem } from '../os/store'
+import { useLoad } from '../loadProgress'
 import {
   CAM_FOV_ROOM,
   INTRO_CAM_POS,
@@ -67,7 +68,10 @@ export default function CameraRig() {
   const still = useRef(reducedMotion())
 
   useFrame((state, delta) => {
-    const dt = Math.min(delta, 0.05)
+    // frames tick behind the loader veil while the room warms up
+    // (SceneReady holds the draw): the opening dolly waits for the
+    // reveal instead of settling where no one can see it
+    const dt = useLoad.getState().revealed ? Math.min(delta, 0.05) : 0
     const cam = state.camera as PerspectiveCamera
     if (import.meta.env.DEV && window.__photo) {
       const ph = window.__photo

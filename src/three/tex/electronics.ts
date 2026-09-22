@@ -19,10 +19,7 @@ import {
   Vector3,
   type ColorRepresentation,
 } from 'three'
-import {
-  mergeGeometries,
-  toCreasedNormals,
-} from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { makeCanvas, mulberry } from '../textures'
 import {
   fbmField,
@@ -111,6 +108,77 @@ export function paintGeo(g: BufferGeometry, color: ColorRepresentation): BufferG
     a[i * 3 + 2] = _c.b
   }
   g.setAttribute('color', new BufferAttribute(a, 3))
+  return g
+}
+
+/** three's BufferGeometryUtils.toCreasedNormals, same maths and same
+    output bit for bit, without its per-vertex string keys and Vector3
+    allocations — every part() of every prop goes through it on first load.
+    Positions share a normal pool when they fall in the same 1 cm cell
+    (three's hash); face normals meeting within `creaseAngle` average. */
+export function toCreasedNormals(geometry: BufferGeometry, creaseAngle = Math.PI / 3): BufferGeometry {
+  const creaseDot = Math.cos(creaseAngle)
+  const k = (1 + 1e-10) * 1e2
+  const g = geometry.index ? geometry.toNonIndexed() : geometry
+  const pos = g.attributes.position
+  const count = pos.count
+  const faces = count / 3
+  // face normals, exactly as crossVectors(c - b, a - b).normalize()
+  const fn = new Float64Array(faces * 3)
+  const keyOf = new Float64Array(count)
+  const cell = new Map<number, number[]>()
+  for (let f = 0; f < faces; f++) {
+    const i = f * 3
+    const ax = pos.getX(i), ay = pos.getY(i), az = pos.getZ(i)
+    const bx = pos.getX(i + 1), by = pos.getY(i + 1), bz = pos.getZ(i + 1)
+    const cx = pos.getX(i + 2), cy = pos.getY(i + 2), cz = pos.getZ(i + 2)
+    const ux = cx - bx, uy = cy - by, uz = cz - bz
+    const vx = ax - bx, vy = ay - by, vz = az - bz
+    let nx = uy * vz - uz * vy
+    let ny = uz * vx - ux * vz
+    let nz = ux * vy - uy * vx
+    const s = 1 / (Math.sqrt(nx * nx + ny * ny + nz * nz) || 1)
+    nx *= s
+    ny *= s
+    nz *= s
+    fn[f * 3] = nx
+    fn[f * 3 + 1] = ny
+    fn[f * 3 + 2] = nz
+    for (let n = 0; n < 3; n++) {
+      // three: `${~~(x*k)},${~~(y*k)},${~~(z*k)}` — the same cell, as a number
+      const qx = ~~(pos.getX(i + n) * k)
+      const qy = ~~(pos.getY(i + n) * k)
+      const qz = ~~(pos.getZ(i + n) * k)
+      const key = ((qx + 0x8000) * 0x10000 + (qy + 0x8000)) * 0x10000 + (qz + 0x8000)
+      keyOf[i + n] = key
+      const list = cell.get(key)
+      if (list) list.push(f)
+      else cell.set(key, [f])
+    }
+  }
+  const out = new Float32Array(count * 3)
+  for (let f = 0; f < faces; f++) {
+    const tx = fn[f * 3], ty = fn[f * 3 + 1], tz = fn[f * 3 + 2]
+    for (let n = 0; n < 3; n++) {
+      const v = f * 3 + n
+      const others = cell.get(keyOf[v])!
+      let sx = 0, sy = 0, sz = 0
+      for (let j = 0; j < others.length; j++) {
+        const o = others[j] * 3
+        const ox = fn[o], oy = fn[o + 1], oz = fn[o + 2]
+        if (tx * ox + ty * oy + tz * oz > creaseDot) {
+          sx += ox
+          sy += oy
+          sz += oz
+        }
+      }
+      const s = 1 / (Math.sqrt(sx * sx + sy * sy + sz * sz) || 1)
+      out[v * 3] = sx * s
+      out[v * 3 + 1] = sy * s
+      out[v * 3 + 2] = sz * s
+    }
+  }
+  g.setAttribute('normal', new BufferAttribute(out, 3, false))
   return g
 }
 

@@ -7,12 +7,15 @@ import {
   type ErrorInfo,
   type ReactNode,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { useSystem } from './os/store'
 import { useRoute } from './router'
 import { useLibrary } from './three/libraryState'
 import { useRoom } from './three/roomState'
 import { identity } from './data/resume'
 import { useWorld } from './world'
+import { loadFraction, setStage, useLoad, type LoadStage } from './loadProgress'
+import veilBackdrop from './assets/veil-night.jpg'
 import WorldClock from './WorldClock'
 import Pocket, { type PocketReason } from './Pocket'
 import './styles/hud.css'
@@ -31,7 +34,36 @@ import './styles/hud.css'
    throwing) the resume is served as a plain page instead.
    ===================================================================== */
 
-const Scene = lazy(() => import('./three/Scene'))
+/* The room's chunk is ~1.3 MB. Its download starts at module
+   evaluation (see the kick-off under the gate helpers below), so the
+   network and parse overlap React's first render and the veil's first
+   paint; lazy() then reuses the same promise.
+
+   Mounting the scene blocks the main thread while it builds, so the
+   veil flips to "unpacking" and gets one paint in BEFORE the scene is
+   handed to React — otherwise that freeze would sit under a stale
+   "downloading" line. */
+const afterPaint = () =>
+  new Promise<void>((resolve) => {
+    let done = false
+    const go = () => {
+      if (done) return
+      done = true
+      window.setTimeout(resolve, 0) // rAF runs just before the paint
+    }
+    requestAnimationFrame(go)
+    window.setTimeout(go, 120) // a hidden tab never paints
+  })
+const loadScene = () =>
+  import('./three/Scene').then(async (m) => {
+    performance.mark?.('load:chunk')
+    setStage('build')
+    await afterPaint()
+    return m
+  })
+let scenePromise: ReturnType<typeof loadScene> | null = null
+const sceneModule = () => (scenePromise ??= loadScene())
+const Scene = lazy(sceneModule)
 const LibraryPage = lazy(() => import('./library/LibraryPage'))
 
 /* ---------- identity, derived once from resume.ts ----------
@@ -89,20 +121,42 @@ function rememberAnyway(): void {
   }
 }
 
+function narrow(): boolean {
+  try {
+    return window.matchMedia('(max-width: 700px)').matches
+  } catch {
+    return false // no matchMedia — assume a desk
+  }
+}
+
 function probe(): PocketReason | null {
   try {
     const gl = document.createElement('canvas').getContext('webgl2')
     if (!gl) return 'webgl'
+    // a throwaway context: hand it back now rather than at GC
+    gl.getExtension('WEBGL_lose_context')?.loseContext()
   } catch {
     return 'webgl'
   }
   if (bypassed()) return null
-  try {
-    if (window.matchMedia('(max-width: 700px)').matches) return 'pocket'
-  } catch {
-    /* no matchMedia — assume a desk */
-  }
+  if (narrow()) return 'pocket'
   return null
+}
+
+/** The landing URL is the room (not /library). Mirrors router.parse. */
+function landsInRoom(): boolean {
+  const base = import.meta.env.BASE_URL
+  let path = window.location.pathname
+  if (path.startsWith(base)) path = path.slice(base.length)
+  return path.replace(/^\/+/, '').split('/')[0] !== 'library'
+}
+
+/* Kick off the room's download right now when this visit is headed
+   for it. Cheap checks only — the WebGL probe waits for Room, and a
+   phone landing on the pocket edition downloads no three.js. A failed
+   download surfaces through lazy() into SceneBoundary, as before. */
+if (landsInRoom() && (bypassed() || !narrow())) {
+  sceneModule().catch(() => {})
 }
 
 function Room() {
@@ -153,6 +207,7 @@ function RoomView() {
   const zoomOut = useSystem((s) => s.zoomOut)
   const paperUp = useRoom((s) => s.paperUp)
   const atShelf = useLibrary((s) => s.open)
+  const revealed = useLoad((s) => s.revealed)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -170,6 +225,7 @@ function RoomView() {
     const onKey = (e: KeyboardEvent) => {
       const sys = useSystem.getState()
       if (sys.view !== 'room' || e.repeat) return
+      if (!useLoad.getState().revealed) return // still behind the veil
       if (useRoom.getState().paperUp || useLibrary.getState().open) return
       const t = e.target as HTMLElement | null
       const tag = t?.tagName
@@ -191,11 +247,14 @@ function RoomView() {
 
   return (
     <>
-      <Suspense fallback={<LoaderVeil />}>
+      {/* the canvas mounts as soon as its code lands and builds UNDER the
+          veil; nothing here replaces it while it works */}
+      <Suspense fallback={null}>
         <Scene />
-        {/* mounts with the scene, so its clock starts at the first frame */}
-        <HudHint visible={hudVisible} power={power} />
       </Suspense>
+      {/* mounts at the reveal, so its identity clock starts with the room */}
+      {revealed && <HudHint visible={hudVisible} power={power} />}
+      <RoomVeil />
 
       {view === 'screen' && (
         <button className="hud-back t-term" onClick={zoomOut}>
@@ -232,20 +291,80 @@ function HudHint({ visible, power }: { visible: boolean; power: string }) {
   )
 }
 
-function LoaderVeil() {
-  return (
-    <div className="loader-veil t-term">
+/* ---------- the room's loader veil ----------
+   Up from the first paint until the room's first real frame is on
+   screen (loadProgress.reveal(), called by three/SceneReady), then it
+   fades out over the drawn room. The bar is loadFraction — the stages
+   the scene actually reports — not a timer: the stripes march on the
+   compositor so a busy main thread never reads as a hang, but the
+   filled length only moves when the work does. Portalled to <body> so
+   no click on it reaches the canvas's event source (#root). */
+const STAGE_LINE: Record<LoadStage, string> = {
+  code: 'downloading the room…',
+  build: 'unpacking the room…',
+  gpu: 'warming up the GPU…',
+  ready: 'stepping in…',
+}
+/** fallback unmount if transitionend never fires (hidden tab, etc.) */
+const VEIL_FADE_MS = 650
+
+function RoomVeil() {
+  const stage = useLoad((s) => s.stage)
+  const revealed = useLoad((s) => s.revealed)
+  const fraction = useLoad(loadFraction)
+  // a second visit to the room this session: it is already warm
+  const [gone, setGone] = useState(() => useLoad.getState().revealed)
+  const [backdropIn, setBackdropIn] = useState(false)
+
+  useEffect(() => {
+    if (!revealed || gone) return
+    const t = window.setTimeout(() => setGone(true), VEIL_FADE_MS + 200)
+    return () => window.clearTimeout(t)
+  }, [revealed, gone])
+
+  if (gone) return null
+  const pct = Math.round(fraction * 100)
+  return createPortal(
+    <div
+      className={`loader-veil room-veil t-term${revealed ? ' is-leaving' : ''}`}
+      onTransitionEnd={(e) => {
+        if (e.target === e.currentTarget && e.propertyName === 'opacity') setGone(true)
+      }}
+    >
+      {/* the night hero shot, blurred and dimmed (~10 KB): the reveal
+          reads as the room coming into focus, not black to room */}
+      <img
+        className={`loader-backdrop${backdropIn ? ' is-in' : ''}`}
+        src={veilBackdrop}
+        alt=""
+        aria-hidden="true"
+        decoding="async"
+        onLoad={() => setBackdropIn(true)}
+      />
       <div className="loader-box">
         <div>
           {identity.name.toUpperCase()} · {SHORT_TITLE.toUpperCase()} ·{' '}
           {CITY.toUpperCase()}
         </div>
-        <div className="loader-bar">
-          <div className="loader-fill" />
+        <div
+          className="loader-bar"
+          role="progressbar"
+          aria-label="loading the room"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={pct}
+        >
+          <div className="loader-track">
+            <div className="loader-stripes" />
+            <div className="loader-cover" style={{ transform: `scaleX(${1 - fraction})` }} />
+          </div>
         </div>
-        <div>warming up the room…</div>
+        <div className="loader-stage" aria-live="polite">
+          {STAGE_LINE[stage]}
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

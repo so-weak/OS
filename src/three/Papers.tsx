@@ -32,6 +32,7 @@ import {
   sweep,
   tint,
 } from './tex/furniture'
+import Staged from './Staged'
 
 /* =====================================================================
    The desk paper stack. Clicking it lifts the top sheet right up to the
@@ -347,7 +348,7 @@ function buildCard(): BufferGeometry {
   return g
 }
 
-export default function Papers() {
+function PapersBody() {
   const view = useSystem((s) => s.view)
   const [lifted, setLifted] = useState<LiftedDoc | null>(null)
   const nextDoc = useRef(0)
@@ -557,5 +558,14 @@ export default function Papers() {
         </Clickable>
       )}
     </>
+  )
+}
+
+/* first load: mounted in its own turn of the staged build (stage.ts) */
+export default function Papers() {
+  return (
+    <Staged id="papers">
+      <PapersBody />
+    </Staged>
   )
 }

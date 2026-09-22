@@ -11,6 +11,7 @@ import { useSystem } from '../os/store'
 import { P } from './layout'
 import { live } from './live'
 import { useRoom } from './roomState'
+import Staged from './Staged'
 
 /* =====================================================================
    Day/night base lighting. Owns the ambient + hemisphere lights, the
@@ -71,7 +72,7 @@ const WIN_POS = rel(-1.18, 1.52, -1.07)
 const WIN_AIM = rel(0.3, 0.8, 0.6)
 const FLOOR_POS = rel(0.1, 0.0, 0.3)
 
-export default function DayNight() {
+function DayNightBody() {
   const amb = useRef<AmbientLight>(null!)
   const hemi = useRef<HemisphereLight>(null!)
   const lampOn = useRoom((s) => s.lampOn)
@@ -184,5 +185,17 @@ export default function DayNight() {
         />
       </Environment>
     </>
+  )
+}
+
+/* first load: its own turn of the staged build (stage.ts) — the
+   environment bake is not spent in the canvas's first commit. It is the
+   first turn, so the lights and the env are in long before any shader
+   is compiled. */
+export default function DayNight() {
+  return (
+    <Staged id="daynight">
+      <DayNightBody />
+    </Staged>
   )
 }

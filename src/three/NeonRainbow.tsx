@@ -25,6 +25,7 @@ import { WINDOW } from './layout'
 import { live } from './live'
 import { rb } from './rbox'
 import { makeCanvas } from './textures'
+import Staged from './Staged'
 
 /* =====================================================================
    A neon rainbow, standing on the window sill.
@@ -213,7 +214,7 @@ function cordGeometry(): BufferGeometry {
 
 /* ---------- the component ---------- */
 
-export default function NeonRainbow() {
+function NeonRainbowBody() {
   const view = useSystem((s) => s.view)
   const on = useNeon((s) => s.on)
   const toggle = useNeon((s) => s.toggle)
@@ -348,5 +349,14 @@ export default function NeonRainbow() {
         </mesh>
       </Clickable>
     </group>
+  )
+}
+
+/* first load: mounted in its own turn of the staged build (stage.ts) */
+export default function NeonRainbow() {
+  return (
+    <Staged id="neon">
+      <NeonRainbowBody />
+    </Staged>
   )
 }

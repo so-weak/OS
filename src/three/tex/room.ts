@@ -744,12 +744,28 @@ export const FLOOR_TILE = 1.8
     Height drives a tangent-space normal (the bevels catch the lamp);
     roughness is a satin varnish 0.42–0.6, duller in gaps and scratches. */
 export function makeFloorMaps(base: string, seed = 5, anisotropy = 8): SurfaceMaps {
+  const gen = makeFloorMapsSteps(base, seed, anisotropy)
+  for (;;) {
+    const r = gen.next()
+    if (r.done) return r.value
+  }
+}
+
+/** makeFloorMaps in steps: each `yield` is a point where a staged first
+    load (stage.ts) may hand the main thread back — the 1024² floor is
+    the single biggest canvas in the room. Same output. */
+export function* makeFloorMapsSteps(
+  base: string,
+  seed = 5,
+  anisotropy = 8,
+): Generator<void, SurfaceMaps, void> {
   const S = 1024
   const COLS = 12
   const rand = mulberry(seed)
   const [r0, g0, b0] = hexRGB(base)
   const grain = fbmField(S, seed + 1, { octaves: 2, freqX: 96, freqY: 3, persistence: 0.55 })
   const figure = fbmField(S, seed + 2, { octaves: 2, freqX: 9, freqY: 2, persistence: 0.5 })
+  yield
 
   interface Board {
     tint: number
@@ -804,6 +820,7 @@ export function makeFloorMaps(base: string, seed = 5, anisotropy = 8): SurfaceMa
   const GAP = 1.0
   const BEVEL = 3.0
   for (let y = 0; y < S; y++) {
+    if (y === S / 2) yield
     for (let x = 0; x < S; x++) {
       const c = colOf[x]
       const w = colX[c + 1] - colX[c]
@@ -886,10 +903,12 @@ export function makeFloorMaps(base: string, seed = 5, anisotropy = 8): SurfaceMa
     }
   }
 
+  yield
   const cctx = makeCanvas(S, S)
   cctx.putImageData(new ImageData(colour, S, S), 0, 0)
   const map = finishSurface(cctx, anisotropy)
   const normalMap = dataTexture(normalCanvas(height, S, 0.55), anisotropy)
+  yield
   // the normal map does the work; SurfaceMaps still wants a bumpMap for older
   // consumers, so hand it a cheap 128² sampling of the same height
   const bumpMap = dataTexture(coarseHeight(height, S, 128), anisotropy)

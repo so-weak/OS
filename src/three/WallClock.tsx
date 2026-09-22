@@ -25,6 +25,7 @@ import {
   shadowBlob,
 } from './tex/window'
 import { makeClockFace, makeClockPlate } from './windowArt'
+import Staged from './Staged'
 
 /* =====================================================================
    The wall clock — the diegetic reason the light follows a clock the
@@ -51,7 +52,7 @@ const R = CLOCK.R
 const TILT = 0.045
 const REST_Z = R * Math.sin(TILT) + 0.0008
 
-export default function WallClock() {
+function WallClockBody() {
   const view = useSystem((s) => s.view)
   const face = useMemo(() => makeClockFace(), [])
   const plate = useMemo(() => makeClockPlate('BENGALURU'), [])
@@ -324,5 +325,14 @@ export default function WallClock() {
         </group>
       </Clickable>
     </group>
+  )
+}
+
+/* first load: mounted in its own turn of the staged build (stage.ts) */
+export default function WallClock() {
+  return (
+    <Staged id="wallclock">
+      <WallClockBody />
+    </Staged>
   )
 }

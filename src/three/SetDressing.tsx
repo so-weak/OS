@@ -56,6 +56,8 @@ import {
   type ProfilePt,
 } from './tex/room'
 import { rb } from './rbox'
+import Staged from './Staged'
+import { useStagedValue } from './stage'
 
 /* =====================================================================
    Set dressing around the room's edges: a rubber plant, a cork board of
@@ -72,7 +74,7 @@ import { rb } from './rbox'
 
 const WALL_Z = -1.08
 
-export default function SetDressing() {
+function SetDressingBody() {
   // one clock for every swaying leaf (both plants read it in their shader)
   useFrame((state) => {
     SWAY.value = state.clock.elapsedTime
@@ -82,7 +84,9 @@ export default function SetDressing() {
       <Radiator />
       <SillPlant />
       <Headphones position={[0.445, 1.14, WALL_Z + 0.0005]} />
-      <CorkBoard position={[BOARD.x, BOARD.y, BOARD.z]} tilt={BOARD.tilt} />
+      <Staged id="setdressing.cork">
+        <CorkBoard position={[BOARD.x, BOARD.y, BOARD.z]} tilt={BOARD.tilt} />
+      </Staged>
       {/* the close-up's scrim, input layer and keys (see PinUps) */}
       <PinFocus />
       <Crocs position={[-0.02, 0, -0.86]} />
@@ -402,7 +406,9 @@ function CorkBoard({
   const boardOpen = usePins((s) => s.open)
   const libraryOpen = useLibrary((s) => s.open)
   const paperUp = useRoom((s) => s.paperUp)
-  const cork = useMemo(() => makeCorkMaps(6), [])
+  // the cork's maps are the board's heaviest build: their own turn of the
+  // staged first load (stage.ts); the board mounts once they are in
+  const cork = useStagedValue('setdressing.corkMaps', () => makeCorkMaps(6))
   const atlas = useMemo(() => makeCardAtlas(9), [])
   const blob = sharedWallShadowBlob()
   const frame = useMemo(
@@ -466,11 +472,12 @@ function CorkBoard({
     })
     m.instanceMatrix.needsUpdate = true
     if (m.instanceColor) m.instanceColor.needsUpdate = true
-  }, [pts])
+    // `cork` is here so the pins are placed once the board has mounted
+  }, [pts, cork])
 
+  useEffect(() => () => cork?.dispose(), [cork])
   useEffect(
     () => () => {
-      cork.dispose()
       atlas.dispose()
       // blob is a shared, app-lifetime singleton (textures.ts) — not ours to dispose
       frame.dispose()
@@ -479,9 +486,10 @@ function CorkBoard({
       pinGeo.dispose()
       yarn.dispose()
     },
-    [cork, atlas, frame, wood, cards, pinGeo, yarn],
+    [atlas, frame, wood, cards, pinGeo, yarn],
   )
 
+  if (!cork) return null
   return (
     <group position={position} rotation-z={tilt}>
       <WallShadow blob={blob} w={0.58} h={0.44} x={0.008} y={-0.012} opacity={0.6} />
@@ -578,5 +586,14 @@ function Boxes({ position }: { position: [number, number, number] }) {
         <meshStandardMaterial vertexColors roughness={0.55} />
       </mesh>
     </group>
+  )
+}
+
+/* first load: mounted in its own turn of the staged build (stage.ts) */
+export default function SetDressing() {
+  return (
+    <Staged id="setdressing">
+      <SetDressingBody />
+    </Staged>
   )
 }

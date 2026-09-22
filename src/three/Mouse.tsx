@@ -25,6 +25,7 @@ import {
   smooth,
   type V3,
 } from './tex/electronics'
+import Staged from './Staged'
 
 /** The mouse lives on render layer 1: the desk's baked ContactShadows
     (a layer-0 ortho camera) must not freeze a blob at its rest position
@@ -378,7 +379,7 @@ function solveCable(
   uv.needsUpdate = true
 }
 
-export default function Mouse() {
+function MouseBody() {
   const body = useRef<Group>(null!)
   const cable = useRef<Mesh>(null!)
   const prevX = useRef(0)
@@ -537,5 +538,14 @@ export default function Mouse() {
         </mesh>
       </group>
     </group>
+  )
+}
+
+/* first load: mounted in its own turn of the staged build (stage.ts) */
+export default function Mouse() {
+  return (
+    <Staged id="mouse">
+      <MouseBody />
+    </Staged>
   )
 }

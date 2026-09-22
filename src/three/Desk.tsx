@@ -48,6 +48,7 @@ import {
   woodBox,
 } from './tex/furniture'
 import { rb } from './rbox'
+import Staged from './Staged'
 
 /* =====================================================================
    The desk itself plus desk props: the live mouse + pad, a mug of chai
@@ -169,7 +170,7 @@ function buildDesk(): DeskGeo {
   return { top, frame, grommet: mergeParts(g, true) }
 }
 
-export default function Desk() {
+function DeskBody() {
   const gl = useThree((s) => s.gl)
   const aniso = gl.capabilities.getMaxAnisotropy()
   const wood = useWood(aniso, P.deskWood, '#3d2a18')
@@ -237,17 +238,21 @@ export default function Desk() {
 
       {/* contact darkening under the desk props (monitor base, keyboard,
           mouse pad, mug, papers). Baked once — frames=1, never Infinity
-          (agreed in review); renderOrder -1 keeps it under the paper. */}
-      <ContactShadows
-        frames={1}
-        position={[0, DESK_TOP + 0.0005, 0]}
-        scale={[DESK.w, DESK.d]}
-        resolution={512}
-        blur={1.6}
-        far={0.45}
-        opacity={0.5}
-        renderOrder={-1}
-      />
+          (agreed in review); renderOrder -1 keeps it under the paper. Waits
+          for every other turn of the staged first load (stage.ts) so the
+          props it darkens are all on the desk when it bakes. */}
+      <Staged id="desk.contact" last>
+        <ContactShadows
+          frames={1}
+          position={[0, DESK_TOP + 0.0005, 0]}
+          scale={[DESK.w, DESK.d]}
+          resolution={512}
+          blur={1.6}
+          far={0.45}
+          opacity={0.5}
+          renderOrder={-1}
+        />
+      </Staged>
 
       <Mouse />
       <Mug />
@@ -829,7 +834,7 @@ function buildTie(): BufferGeometry {
   return mergeParts([band, tail])
 }
 
-export function Cables() {
+function CablesBody() {
   const plug = useMemo(() => buildPlug(), [])
   const tie = useMemo(() => buildTie(), [])
   useEffect(
@@ -1150,5 +1155,22 @@ function PowerStrip() {
         position={[0.075, 0.03, 0]}
       />
     </group>
+  )
+}
+
+/* first load: mounted in its own turn of the staged build (stage.ts) */
+export default function Desk() {
+  return (
+    <Staged id="desk">
+      <DeskBody />
+    </Staged>
+  )
+}
+
+export function Cables() {
+  return (
+    <Staged id="cables">
+      <CablesBody />
+    </Staged>
   )
 }

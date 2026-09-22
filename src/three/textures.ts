@@ -49,6 +49,56 @@ export function finish(ctx: CanvasRenderingContext2D, pixel = true): CanvasTextu
 }
 
 /* ---------------------------------------------------------------------
+   Lettering. Anything with words on it is read at a glancing angle (the
+   nameplate leans back, the drawer cards and spines are seen side-on)
+   and from across the room, so it gets trilinear mips and the GPU's full
+   anisotropy — three clamps TEXT_ANISOTROPY to
+   renderer.capabilities.getMaxAnisotropy() at upload. Surfaces without
+   lettering keep finish()'s cheaper 4x.
+
+   Pixel-font lettering is drawn SUPERSAMPLED: every font cell becomes a
+   k×k block of texels and the texture is filtered linearly. NEAREST on
+   the 1x drawing looked crisp only at exact integer zoom; at every other
+   scale it gave uneven cell widths that crawled as the camera moved, and
+   LINEAR on the 1x drawing smeared a cell across a whole screen pixel or
+   more. At k texels per cell an edge blurs over 1/k of a cell: hard
+   edges, antialiased, stable, with a clean mip chain for distance.
+   --------------------------------------------------------------------- */
+export const TEXT_ANISOTROPY = 16
+/** longest side a supersampled lettering canvas may reach */
+const TEXT_MAX_SIDE = 2048
+
+/** Trilinear + full anisotropy for any canvas with lettering on it. */
+export function finishText(ctx: CanvasRenderingContext2D): CanvasTexture {
+  const tex = new CanvasTexture(ctx.canvas)
+  tex.colorSpace = SRGBColorSpace
+  tex.magFilter = LinearFilter
+  tex.minFilter = LinearMipmapLinearFilter
+  tex.anisotropy = TEXT_ANISOTROPY
+  tex.needsUpdate = true
+  return tex
+}
+
+/** How many texels per design pixel a w×h lettering canvas gets: aim
+    for `want`, never past TEXT_MAX_SIDE. */
+function superFactor(w: number, h: number, want: number): number {
+  return Math.max(1, Math.min(Math.round(want), Math.floor(TEXT_MAX_SIDE / Math.max(w, h))))
+}
+
+/** A w×h design-pixel canvas stored at k× — draw in design pixels. */
+function superCanvas(w: number, h: number, k: number): CanvasRenderingContext2D {
+  const ctx = makeCanvas(Math.round(w * k), Math.round(h * k))
+  ctx.scale(k, k)
+  return ctx
+}
+
+/** Supersample so one pixel-font cell of `cell` design pixels spans at
+    least ~12 texels (a 3 px cell is drawn 4x, a 6 px cell 2x). */
+function cellFactor(w: number, h: number, cell: number): number {
+  return superFactor(w, h, Math.min(4, Math.max(2, Math.ceil(12 / cell))))
+}
+
+/* ---------------------------------------------------------------------
    3×5 pixel font — original glyphs, used for posters/labels/badges.
    --------------------------------------------------------------------- */
 const FONT: Record<string, [string, string, string, string, string]> = {
@@ -98,9 +148,29 @@ const FONT: Record<string, [string, string, string, string, string]> = {
   ' ': ['...', '...', '...', '...', '...'],
 }
 
+/* In three columns M and W can only be H with a filled middle, N only a
+   lowercase n and V only a U with a point, so the nameplate read
+   "AI / HL EnGInEER", the drawer card "HISC." and the poster "SAUE".
+   Lettering that has room (labels, plates, the floppy poster) opts into
+   these wider cuts; everything else keeps the fixed 3-column grid its
+   layout was measured against. */
+const WIDE: Record<string, string[]> = {
+  M: ['X...X', 'XX.XX', 'X.X.X', 'X...X', 'X...X'],
+  N: ['X..X', 'XX.X', 'X.XX', 'X..X', 'X..X'],
+  V: ['X...X', 'X...X', 'X...X', '.X.X.', '..X..'],
+  W: ['X...X', 'X...X', 'X.X.X', 'XX.XX', 'X...X'],
+}
+
+function glyphFor(ch: string, wide: boolean): readonly string[] {
+  return (wide ? WIDE[ch] : undefined) ?? FONT[ch] ?? FONT[' ']
+}
+
 /** Width in pixels of a string rendered with drawPixelText at cell=1. */
-export function pixelTextWidth(text: string): number {
-  return text.length * 4 - 1
+export function pixelTextWidth(text: string, wide = false): number {
+  if (!wide) return text.length * 4 - 1
+  let w = 0
+  for (const ch of text.toUpperCase()) w += glyphFor(ch, true)[0].length + 1
+  return Math.max(0, w - 1)
 }
 
 export function drawPixelText(
@@ -110,19 +180,21 @@ export function drawPixelText(
   y: number,
   cell: number,
   color: string,
+  wide = false,
 ): void {
   ctx.fillStyle = color
   let cx = x
   for (const raw of text.toUpperCase()) {
-    const glyph = FONT[raw] ?? FONT[' ']
+    const glyph = glyphFor(raw, wide)
+    const cols = glyph[0].length
     for (let r = 0; r < 5; r++) {
-      for (let c = 0; c < 3; c++) {
+      for (let c = 0; c < cols; c++) {
         if (glyph[r][c] === 'X') {
           ctx.fillRect(cx + c * cell, y + r * cell, cell, cell)
         }
       }
     }
-    cx += 4 * cell
+    cx += (cols + 1) * cell
   }
 }
 
@@ -172,7 +244,8 @@ const ROCKET: string[] = [
 
 /** "SHIP IT!" rocket poster. */
 export function makeRocketPoster(): CanvasTexture {
-  const ctx = makeCanvas(160, 208)
+  // 3x: the 4 px lettering cells land at 12 texels
+  const ctx = superCanvas(160, 208, superFactor(160, 208, 3))
   ctx.fillStyle = '#101a33'
   ctx.fillRect(0, 0, 160, 208)
   // starfield
@@ -216,7 +289,7 @@ export function makeRocketPoster(): CanvasTexture {
   ctx.strokeStyle = '#f0a72b'
   ctx.lineWidth = 4
   ctx.strokeRect(4, 4, 152, 200)
-  return finish(ctx)
+  return finishText(ctx)
 }
 
 const FLOPPY_ART: string[] = [
@@ -236,7 +309,8 @@ const FLOPPY_ART: string[] = [
 
 /** "SAVE EARLY / SAVE OFTEN" floppy poster. */
 export function makeFloppyPoster(): CanvasTexture {
-  const ctx = makeCanvas(128, 168)
+  // 4x: SAVE EARLY / SAVE OFTEN is set in 2 px cells
+  const ctx = superCanvas(128, 168, superFactor(128, 168, 4))
   ctx.fillStyle = '#0d221a'
   ctx.fillRect(0, 0, 128, 168)
   drawArt(
@@ -253,19 +327,24 @@ export function makeFloppyPoster(): CanvasTexture {
     14,
     8,
   )
-  drawPixelText(ctx, 'SAVE EARLY', 26, 122, 2, '#33ff66')
-  drawPixelText(ctx, 'SAVE OFTEN', 26, 140, 2, '#33ff66')
+  // wide V and N (not "SAUE OFTEn"); one left edge, the block centred
+  const slogan = ['SAVE EARLY', 'SAVE OFTEN']
+  const sx = Math.round(
+    (128 - Math.max(...slogan.map((l) => pixelTextWidth(l, true))) * 2) / 2,
+  )
+  slogan.forEach((l, i) => drawPixelText(ctx, l, sx, 122 + i * 18, 2, '#33ff66', true))
   ctx.strokeStyle = '#33ff66'
   ctx.lineWidth = 3
   ctx.strokeRect(3, 3, 122, 162)
-  return finish(ctx)
+  return finishText(ctx)
 }
 
 /* ---------------------------------------------------------------------
    Sticky note — handwritten hint on the monitor bezel.
    --------------------------------------------------------------------- */
 export function makeStickyNote(): CanvasTexture {
-  const ctx = makeCanvas(128, 128)
+  // drawn in 128-px design units, stored at 2x for the handwriting
+  const ctx = superCanvas(128, 128, 2)
   ctx.fillStyle = '#f6d84f'
   ctx.fillRect(0, 0, 128, 128)
   // slightly sun-faded top edge + curled corner shadow
@@ -290,7 +369,7 @@ export function makeStickyNote(): CanvasTexture {
   // little prompt doodle
   ctx.fillStyle = '#28417e'
   drawPixelText(ctx, '>_', 50, 96, 4, '#28417e')
-  return finish(ctx, false)
+  return finishText(ctx)
 }
 
 /* ---------------------------------------------------------------------
@@ -300,7 +379,10 @@ export function makeStickyNote(): CanvasTexture {
 export function makeDocument(title: string, paragraphs: string[]): CanvasTexture {
   const W = 512
   const H = 704
-  const ctx = makeCanvas(W, H)
+  // laid out in 512×704 units, stored at 2x: a lifted sheet fills much
+  // of the screen, and on a 2x display 512 texels across would be
+  // stretched ~1.7x. Drawn lazily on first lift, so load never pays.
+  const ctx = superCanvas(W, H, 2)
   ctx.fillStyle = '#fdfcf7' // --paper
   ctx.fillRect(0, 0, W, H)
   // aged edges
@@ -356,7 +438,7 @@ export function makeDocument(title: string, paragraphs: string[]): CanvasTexture
     if (y > H - 48) break
   }
   drawPixelText(ctx, 'SOUBHIK SYSTEMS INTERNAL', 72, H - 30, 2, '#a29d90')
-  return finish(ctx, false)
+  return finishText(ctx)
 }
 
 /* ---------------------------------------------------------------------
@@ -369,7 +451,7 @@ export function makeScoreboard(
 ): CanvasTexture {
   const W = 128
   const H = 72
-  const ctx = makeCanvas(W, H)
+  const ctx = superCanvas(W, H, 3)
   ctx.fillStyle = '#0b0d0c'
   ctx.fillRect(0, 0, W, H)
   ctx.strokeStyle = '#2c4136'
@@ -384,7 +466,7 @@ export function makeScoreboard(
       : '#20281f'
     ctx.fillRect(96 + 0, 12 + i * 18, 10, 10)
   }
-  return finish(ctx)
+  return finishText(ctx)
 }
 
 /** Soft radial dot — steam puffs and celebration sparks. */
@@ -588,15 +670,17 @@ export function makeLabel(
   cell = 4,
   pad = 2,
 ): CanvasTexture {
-  const w = pixelTextWidth(text) * cell + pad * 2
+  // wide M/N/V/W: consumers size the plane from the canvas aspect
+  const w = pixelTextWidth(text, true) * cell + pad * 2
   const h = 5 * cell + pad * 2
-  const ctx = makeCanvas(w, h)
+  // stored supersampled; the aspect (all any consumer reads) is unchanged
+  const ctx = superCanvas(w, h, cellFactor(w, h, cell))
   if (bg) {
     ctx.fillStyle = bg
     ctx.fillRect(0, 0, w, h)
   }
-  drawPixelText(ctx, text, pad, pad, cell, fg)
-  return finish(ctx)
+  drawPixelText(ctx, text, pad, pad, cell, fg, true)
+  return finishText(ctx)
 }
 
 /** Several lines of pixel text, centred. `aspect` (w/h) pads the canvas
@@ -610,7 +694,7 @@ export function makeLabelLines(
   aspect?: number,
 ): CanvasTexture {
   const lineGap = 2 * cell
-  const textW = Math.max(...lines.map((l) => pixelTextWidth(l))) * cell
+  const textW = Math.max(...lines.map((l) => pixelTextWidth(l, true))) * cell
   const textH = lines.length * 5 * cell + (lines.length - 1) * lineGap
   let w = textW + pad * 2
   let h = textH + pad * 2
@@ -618,14 +702,14 @@ export function makeLabelLines(
     if (w / h < aspect) w = Math.round(h * aspect)
     else h = Math.round(w / aspect)
   }
-  const ctx = makeCanvas(w, h)
+  const ctx = superCanvas(w, h, cellFactor(w, h, cell))
   if (bg) {
     ctx.fillStyle = bg
     ctx.fillRect(0, 0, w, h)
   }
   const top = Math.round((h - textH) / 2)
   lines.forEach((line, i) => {
-    const lw = pixelTextWidth(line) * cell
+    const lw = pixelTextWidth(line, true) * cell
     drawPixelText(
       ctx,
       line,
@@ -633,9 +717,10 @@ export function makeLabelLines(
       top + i * (5 * cell + lineGap),
       cell,
       fg,
+      true,
     )
   })
-  return finish(ctx)
+  return finishText(ctx)
 }
 
 /* ---------------------------------------------------------------------

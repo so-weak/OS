@@ -1,7 +1,21 @@
 import { useLayoutEffect, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
-import type { BufferAttribute, InstancedMesh, Light, Mesh, Object3D, Scene, SpotLight } from 'three'
+import { useFrame, useThree } from '@react-three/fiber'
+import { MeshBasicMaterial, PerspectiveCamera } from 'three'
+import type {
+  BufferAttribute,
+  InstancedMesh,
+  Light,
+  Material,
+  Mesh,
+  Object3D,
+  Scene,
+  SpotLight,
+  WebGLRenderer,
+} from 'three'
+import { useLoad } from '../loadProgress'
 import { useSystem } from '../os/store'
+import Staged from './Staged'
+import { useStagedSteps } from './stage'
 
 /* =====================================================================
    Shadow scheduler — static shadows are drawn once, not sixty times a
@@ -236,8 +250,93 @@ function tickSched(s: Sched, scene: Scene, now: number, away: boolean): void {
   }
 }
 
-export default function ShadowScheduler() {
+/* ---------------------------------------------------------------------
+   First load: warm the shadow pass one program at a time.
+
+   The first draw of the shadow maps compiles a depth program for every
+   kind of caster (instanced or not, which side casts, alpha-tested, a
+   custom depth material…), about ten, synchronously, in whichever frame
+   draws shadows first — that was a single 150–700 ms freeze at the end
+   of the load. Here, behind the veil, each kind is drawn into the
+   shadow maps on its own, one per turn of the staged build (stage.ts),
+   through a camera that sees nothing (so the main pass draws nothing),
+   and the maps are then flagged for a full redraw with every caster:
+   same pictures, the compile cost spread thin.
+   --------------------------------------------------------------------- */
+
+/** what decides a caster's shadow depth program */
+function depthKind(m: Mesh): string {
+  const mat = (Array.isArray(m.material) ? m.material[0] : m.material) as Material & {
+    map?: unknown
+    alphaMap?: unknown
+    displacementMap?: unknown
+  }
+  const cut = mat.alphaTest > 0 && (mat.map || mat.alphaMap) ? mat.uuid : ''
+  return [
+    (m as InstancedMesh).isInstancedMesh ? 'i' : '',
+    m.morphTargetInfluences ? 'm' : '',
+    mat.side,
+    mat.shadowSide,
+    cut,
+    mat.displacementMap ? 'd' : '',
+    mat.alphaToCoverage ? 'a' : '',
+    m.customDepthMaterial?.uuid ?? '',
+  ].join('|')
+}
+
+function* warmShadowPass(gl: WebGLRenderer, scene: Scene): Generator<void, boolean, void> {
+  if (useLoad.getState().revealed) return false
+  const casters: Mesh[] = []
+  const lights: SpotLight[] = []
+  scene.traverse((o) => {
+    if ((o as Mesh).isMesh && o.castShadow) casters.push(o as Mesh)
+    else if ((o as Light).isLight && o.castShadow) lights.push(o as SpotLight)
+  })
+  if (!lights.length || !casters.length) return false
+  const kinds = new Map<string, Set<Mesh>>()
+  for (const m of casters) {
+    const k = depthKind(m)
+    if (!kinds.has(k)) kinds.set(k, new Set())
+    kinds.get(k)!.add(m)
+  }
+  // a camera far below the floor looking down: its main pass culls
+  // everything; what is never culled draws into nothing
+  const blind = new PerspectiveCamera(1, 1, 0.001, 0.002)
+  blind.position.set(0, -1000, 0)
+  blind.lookAt(0, -2000, 0)
+  blind.updateMatrixWorld()
+  const nothing = new MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false })
+  for (const group of kinds.values()) {
+    yield
+    if (useLoad.getState().revealed) break
+    const muted: Mesh[] = []
+    for (const m of casters) {
+      if (m.castShadow && !group.has(m)) {
+        m.castShadow = false
+        muted.push(m)
+      }
+    }
+    for (const l of lights) l.shadow.needsUpdate = true
+    const prev = scene.overrideMaterial
+    scene.overrideMaterial = nothing
+    try {
+      gl.render(scene, blind)
+    } finally {
+      scene.overrideMaterial = prev
+      for (const m of muted) m.castShadow = true
+    }
+  }
+  nothing.dispose()
+  // the maps hold one kind each now: redraw them whole at the next draw
+  for (const l of lights) l.shadow.needsUpdate = true
+  return true
+}
+
+function ShadowSchedulerBody() {
   const sched = useRef<Sched | null>(null)
+  const gl = useThree((s) => s.gl)
+  const scene = useThree((s) => s.scene)
+  useStagedSteps('shadows.warm', () => warmShadowPass(gl, scene))
 
   useLayoutEffect(() => {
     const s = createSched()
@@ -257,4 +356,15 @@ export default function ShadowScheduler() {
   })
 
   return null
+}
+
+/* first load: mounted after every other turn of the staged build
+   (stage.ts), so it is still the last frame callback and its first
+   scan sees the whole room */
+export default function ShadowScheduler() {
+  return (
+    <Staged id="shadows" last>
+      <ShadowSchedulerBody />
+    </Staged>
+  )
 }

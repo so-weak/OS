@@ -8,6 +8,8 @@ import { playClick } from '../os/sound'
 import BackWall from './BackWall'
 import Chair from './Chair'
 import Clickable from './Clickable'
+import Staged from './Staged'
+import { useStagedSteps, useStagedValue } from './stage'
 import { P } from './layout'
 import {
   disposeSurface,
@@ -32,7 +34,7 @@ import {
   corniceGeo,
   floppyStackGeo,
   makeBinderLabels,
-  makeFloorMaps,
+  makeFloorMapsSteps,
   makeFloorWear,
   makeGlassSheen,
   makeGrainMaps,
@@ -64,30 +66,43 @@ import {
 
 const WALL_Z = -1.08
 
+/* first load: mounted in its own turn of the staged build (stage.ts) */
 export default function Room() {
+  return (
+    <Staged id="room">
+      <RoomBody />
+    </Staged>
+  )
+}
+
+function RoomBody() {
   const gl = useThree((s) => s.gl)
   const aniso = Math.min(8, gl.capabilities.getMaxAnisotropy())
-  const floor = useMemo(
-    () => repeatSurface(makeFloorMaps(P.floorWood, 5, aniso), 4.6 / FLOOR_TILE, 3.9 / FLOOR_TILE),
-    [aniso],
-  )
+  // the big surfaces are built one per turn of the staged first load
+  // (stage.ts), not all in one frame; nothing renders until all are in
+  const floor = useStagedSteps('room.floor', function* () {
+    const maps = yield* makeFloorMapsSteps(P.floorWood, 5, aniso)
+    return repeatSurface(maps, 4.6 / FLOOR_TILE, 3.9 / FLOOR_TILE)
+  })
   // one plaster for every wall: the back wall's own map is the tiled colour;
   // the side walls swap in a baked map and keep the shared normal/roughness
-  const wall = useMemo(() => {
+  const wall = useStagedValue('room.plaster', () => {
     const s = plasterSurface(P.wallA, 11, 512, aniso)
     // colour mottling: one tile per ~2 m so it never reads as a grid;
     // the plaster's tooth is fine, one tile per ~0.55 m
     s.map.repeat.set(2.2, 1.3)
     for (const m of [s.bumpMap, s.roughnessMap, s.normalMap]) m?.repeat.set(8, 4.6)
     return s
-  }, [aniso])
-  const sideL = useMemo(() => bakeSideWall('#272b35', 12, 'left', aniso), [aniso])
-  const sideR = useMemo(() => bakeSideWall('#282c36', 14, 'right', aniso), [aniso])
+  })
+  const sideL = useStagedValue('room.sideL', () => bakeSideWall('#272b35', 12, 'left', aniso))
+  const sideR = useStagedValue('room.sideR', () => bakeSideWall('#282c36', 14, 'right', aniso))
   // soft decal overlays: low-frequency, blurred by design, so a smaller
   // canvas costs nothing visible (was 1024x576 / 768x652)
-  const grime = useMemo(() => makeWallGrime(5, 640, 360, aniso), [aniso])
-  const wear = useMemo(() => makeFloorWear(8, 512, 435, aniso), [aniso])
-  const rug = useMemo(() => makeRugMaps(3, aniso), [aniso])
+  const decals = useStagedValue('room.decals', () => ({
+    grime: makeWallGrime(5, 640, 360, aniso),
+    wear: makeFloorWear(8, 512, 435, aniso),
+  }))
+  const rug = useStagedValue('room.rug', () => makeRugMaps(3, aniso))
   const rugMesh = useMemo(() => rugGeo(), [])
   const fringe = useMemo(() => buildFringe(4), [])
   const skirting = useMemo(() => skirtingGeo(), [])
@@ -104,16 +119,26 @@ export default function Room() {
     return m
   }, [])
 
+  useEffect(() => () => void (floor && disposeSurface(floor)), [floor])
+  useEffect(() => () => void (wall && disposeSurface(wall)), [wall])
+  useEffect(() => () => sideL?.dispose(), [sideL])
+  useEffect(() => () => sideR?.dispose(), [sideR])
   useEffect(
     () => () => {
-      disposeSurface(floor)
-      disposeSurface(wall)
-      sideL.dispose()
-      sideR.dispose()
-      grime.dispose()
-      wear.dispose()
-      rug.map.dispose()
-      rug.weave.dispose()
+      decals?.grime.dispose()
+      decals?.wear.dispose()
+    },
+    [decals],
+  )
+  useEffect(
+    () => () => {
+      rug?.map.dispose()
+      rug?.weave.dispose()
+    },
+    [rug],
+  )
+  useEffect(
+    () => () => {
       rugMesh.dispose()
       fringe.geometry.dispose()
       ;(fringe.material as { dispose(): void }).dispose()
@@ -123,8 +148,11 @@ export default function Room() {
       // blob is a shared, app-lifetime singleton (textures.ts) — not ours to dispose
       plastic.dispose()
     },
-    [floor, wall, sideL, sideR, grime, wear, rug, rugMesh, fringe, skirting, cornice, plastic],
+    [rugMesh, fringe, skirting, cornice, plastic],
   )
+
+  if (!floor || !wall || !sideL || !sideR || !decals || !rug) return null
+  const { grime, wear } = decals
 
   return (
     <group>
@@ -159,16 +187,20 @@ export default function Room() {
           floor (chair, desk legs, tower, bin, bookcase). frames=1: one
           bake at mount. Above the rug top (0.007); renderOrder -1 so it
           can never land over the lifted paper (renderOrder 50). */}
-      <ContactShadows
-        frames={1}
-        position={[0.1, 0.008, 0.35]}
-        scale={[4.6, 3.9]}
-        resolution={1024}
-        blur={2.5}
-        far={0.6}
-        opacity={0.55}
-        renderOrder={-1}
-      />
+      {/* baked on its first frame, so it waits for every other turn of
+          the staged first load: the props it darkens must be in the room */}
+      <Staged id="room.contact" last>
+        <ContactShadows
+          frames={1}
+          position={[0.1, 0.008, 0.35]}
+          scale={[4.6, 3.9]}
+          resolution={1024}
+          blur={2.5}
+          far={0.6}
+          opacity={0.55}
+          renderOrder={-1}
+        />
+      </Staged>
 
       {/* the rug: woven kilim, fringe, and a soft edge shadow on the boards */}
       <group position={[RUG.x, 0, RUG.z]} rotation-y={RUG.yaw}>
@@ -258,7 +290,9 @@ export default function Room() {
 
       <Poster kind="rocket" position={[-0.47, 1.5, WALL_Z + 0.0005]} w={0.32} h={0.42} tilt={-0.012} blob={blob} />
       <Poster kind="floppy" position={[0.52, 1.56, WALL_Z + 0.0005]} w={0.24} h={0.32} tilt={0.02} blob={blob} />
-      <Shelf blob={blob} />
+      <Staged id="room.shelf">
+        <Shelf blob={blob} />
+      </Staged>
       <Chair />
       <WallSocket plastic={plastic} />
       <LightSwitch plastic={plastic} />
@@ -504,7 +538,9 @@ function Shelf({ blob }: { blob: CanvasTexture }) {
   const view = useSystem((s) => s.view)
   const board = useMemo(() => shelfBoardGeo(), [])
   const brackets = useMemo(() => bracketsGeo([-0.26, 0.26]), [])
-  const books = useMemo(() => buildShelfBooks(), [])
+  // the spines' atlas is the shelf's heaviest build: its own turn of the
+  // staged first load (stage.ts)
+  const books = useStagedValue('room.shelfBooks', buildShelfBooks)
   const trophy = useMemo(() => trophyGeo(), [])
   const floppies = useMemo(() => floppyStackGeo(), [])
   const grain = useMemo(() => {
@@ -526,8 +562,6 @@ function Shelf({ blob }: { blob: CanvasTexture }) {
     () => () => {
       board.dispose()
       brackets.dispose()
-      books.geometry.dispose()
-      books.atlas.dispose()
       trophy.plinth.dispose()
       trophy.gold.dispose()
       floppies.dispose()
@@ -538,8 +572,17 @@ function Shelf({ blob }: { blob: CanvasTexture }) {
       labelAtlas.dispose()
       plateTex.dispose()
     },
-    [board, brackets, books, trophy, floppies, grain, cloth, binders, binderLabels, labelAtlas, plateTex],
+    [board, brackets, trophy, floppies, grain, cloth, binders, binderLabels, labelAtlas, plateTex],
   )
+  useEffect(
+    () => () => {
+      books?.geometry.dispose()
+      books?.atlas.dispose()
+    },
+    [books],
+  )
+
+  if (!books) return null
 
   return (
     <group position={[1.14, 1.52, -0.97]}>

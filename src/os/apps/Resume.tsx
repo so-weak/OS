@@ -1,17 +1,19 @@
 import { identity } from '../../data/resume'
 import { AppIcon } from '../icons/AppIcon'
 import { useToast } from './useToast'
-import resumePage1 from '../../assets/resume-pages/page-1.png'
-import resumePage2 from '../../assets/resume-pages/page-2.png'
+import resumePage1 from '../../assets/resume-pages/page-1.svg'
+import resumePage2 from '../../assets/resume-pages/page-2.svg'
 import './apps.css'
 
 /* =====================================================================
    Resume.pdf — the whole point of the portfolio, so it has to actually
    show up. A live PDF plugin under this window's CSS 3D transform is
    unreliable (it can "load" and still paint garbage on the CRT tube),
-   so the pages are pre-rendered to images at build time (see
-   src/assets/resume-pages/, sourced from public/SoubhikGhosh-Resume.pdf
-   via pdftoppm) and shown directly — the one thing that always renders.
+   so each page is converted to SVG (vector glyph outlines, drawn by the
+   browser at whatever resolution the tube ends up at, so small text
+   stays crisp) and shown directly. Regenerate after editing the PDF:
+     pdftocairo -svg -f N -l N public/SoubhikGhosh-Resume.pdf \
+       src/assets/resume-pages/page-N.svg
    Download/Print/Open-in-tab still hand over the real PDF underneath.
    ===================================================================== */
 
