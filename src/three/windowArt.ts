@@ -2048,13 +2048,13 @@ export interface Plate {
 /** Brass nameplate: brushed, with the city engraved into it. */
 export function makeClockPlate(text = 'BENGALURU'): Plate {
   const W = 512
-  const H = 104
+  const H = 93
   const ctx = makeCanvas(W, H, true)
   const rel = makeCanvas(W, H, true)
   const g = ctx.createLinearGradient(0, 0, 0, H)
-  g.addColorStop(0, '#c9a45a')
-  g.addColorStop(0.45, '#b08d44')
-  g.addColorStop(1, '#8d6f32')
+  g.addColorStop(0, '#dcbb6c')
+  g.addColorStop(0.45, '#c59f4e')
+  g.addColorStop(1, '#a07d3a')
   ctx.fillStyle = g
   ctx.fillRect(0, 0, W, H)
   rel.fillStyle = '#808080'
@@ -2071,9 +2071,9 @@ export function makeClockPlate(text = 'BENGALURU'): Plate {
     ctx.stroke()
   }
   // engraved letters, spaced by hand
-  const font = '700 54px Georgia, "Times New Roman", serif'
+  const font = '700 60px Georgia, "Times New Roman", serif'
   ctx.font = font
-  const tracking = 12
+  const tracking = 8
   const widths = [...text].map((ch) => ctx.measureText(ch).width)
   const total = widths.reduce((a, b) => a + b, 0) + tracking * (text.length - 1)
   let x = (W - total) / 2
@@ -2082,9 +2082,9 @@ export function makeClockPlate(text = 'BENGALURU'): Plate {
     // highlight below-right, then the dark cut
     ctx.font = font
     ctx.textBaseline = 'middle'
-    ctx.fillStyle = 'rgba(255,236,178,0.55)'
+    ctx.fillStyle = 'rgba(255,240,190,0.7)'
     ctx.fillText(ch, x + 1.4, H / 2 + 3.4)
-    ctx.fillStyle = '#3a2810'
+    ctx.fillStyle = '#1c1006'
     ctx.fillText(ch, x, H / 2 + 2)
     rel.font = font
     rel.textBaseline = 'middle'

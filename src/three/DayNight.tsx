@@ -39,10 +39,10 @@ const NIGHT = {
 const DAY = {
   bg: new Color('#2e3852'),
   amb: new Color('#93a0bd'),
-  ambI: 0.6,
+  ambI: 1.05,
   sky: new Color('#bcc9e4'),
   ground: new Color('#5a4c3c'),
-  hemI: 0.68,
+  hemI: 1.1,
 }
 /* golden hour — the window side of it lives in Window.tsx with the
    same values, so the room and the sky agree */
@@ -104,7 +104,7 @@ export default function DayNight() {
     scene.environmentIntensity =
       (0.85 + 0.5 * m + 2 * live.flash) * MathUtils.lerp(0.8, 1, live.lamp)
     // a real camera would expose for a dim room: lift the whole image
-    gl.toneMappingExposure = MathUtils.lerp(1.5, 1.1, m)
+    gl.toneMappingExposure = MathUtils.lerp(1.5, 1.28, m)
   })
 
   return (
