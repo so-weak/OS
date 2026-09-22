@@ -1,11 +1,11 @@
-import { LinearFilter, type CanvasTexture } from 'three'
+import type { CanvasTexture } from 'three'
 import type { Book } from '../data/library'
 import {
   bookplateCanvas,
   coverCanvas,
   spineCanvas,
 } from '../library/art'
-import { finish, makeCanvas } from './textures'
+import { finishText, makeCanvas } from './textures'
 
 /* =====================================================================
    The 3D shelf's half of the bookbinding: the drawings live in
@@ -33,7 +33,11 @@ export interface SpineAtlas {
   dispose(): void
 }
 
-const ATLAS_PAD = 3
+/** Gutter around each spine in the atlas, filled with the spine's own
+    edge colours (see makeSpineAtlas) so the mip chain never bleeds a
+    neighbour — or bare black — into a book's edge. 8 texels holds clean
+    through mip level 3, i.e. to 1/8 scale, well past the shelf view. */
+const ATLAS_PAD = 8
 
 /**
  * Every stamped spine in one texture instead of one canvas (and one GPU
@@ -46,7 +50,7 @@ const ATLAS_PAD = 3
 export function makeSpineAtlas(list: Book[]): SpineAtlas {
   if (list.length === 0) {
     const ctx = makeCanvas(2, 2)
-    return { tex: finish(ctx, false), uv: new Map(), dispose: () => {} }
+    return { tex: finishText(ctx), uv: new Map(), dispose: () => {} }
   }
   const cells = list.map((b) => ({ book: b, canvas: spineCanvas(b) }))
   const maxW = Math.max(...cells.map((c) => c.canvas.width))
@@ -64,8 +68,17 @@ export function makeSpineAtlas(list: Book[]): SpineAtlas {
   cells.forEach(({ book, canvas }, i) => {
     const col = i % cols
     const row = Math.floor(i / cols)
-    const x = col * cellW + ATLAS_PAD + (maxW - canvas.width) / 2
-    const y = row * cellH + ATLAS_PAD + (maxH - canvas.height) / 2
+    const x = Math.round(col * cellW + ATLAS_PAD + (maxW - canvas.width) / 2)
+    const y = Math.round(row * cellH + ATLAS_PAD + (maxH - canvas.height) / 2)
+    // gutter: the spine stretched a pad wider on every side, then the
+    // spine itself on top — its edge colours extend into the pad
+    ctx.drawImage(
+      canvas,
+      x - ATLAS_PAD,
+      y - ATLAS_PAD,
+      canvas.width + ATLAS_PAD * 2,
+      canvas.height + ATLAS_PAD * 2,
+    )
     ctx.drawImage(canvas, x, y)
     uv.set(book.id, {
       u0: x / atlasW,
@@ -74,28 +87,35 @@ export function makeSpineAtlas(list: Book[]): SpineAtlas {
       v1: 1 - y / atlasH,
     })
   })
-  const tex = finish(ctx, false)
-  // spines are read close-up and never minified far enough for mip
-  // banding to matter; skipping mips avoids bleed across atlas cells
-  tex.generateMipmaps = false
-  tex.minFilter = LinearFilter
+  // The atlas is drawn at 3400 texels per metre and the library view
+  // shows it at ~600-1200 screen px per metre, so the titles are always
+  // MINIFIED ~3-5x. Without mips (as before) that sampled every 3rd-5th
+  // texel: letter strokes dropped out and shimmered. Trilinear mips plus
+  // full anisotropy (the case is angled to the camera) read clean; the
+  // padded gutters above keep the mips from bleeding across cells.
+  const tex = finishText(ctx)
   return { tex, uv, dispose: () => tex.dispose() }
 }
 
+/** Covers are drawn at 2x: the held volume fills a good part of the
+    screen, and at 1x its 512-texel board was stretched on a 2x display.
+    One book at a time, built on selection, so load never pays for it. */
+const COVER_SCALE = 2
+
 /** The front board of a volume held up to the camera. */
 export function makeFrontCover(b: Book): CanvasTexture {
-  return wrap(coverCanvas(b))
+  return wrap(coverCanvas(b, COVER_SCALE))
 }
 
 /** The pasted bookplate on the back board: the note, the stars, the date. */
 export function makeBackCover(b: Book): CanvasTexture {
-  return wrap(bookplateCanvas(b))
+  return wrap(bookplateCanvas(b, COVER_SCALE))
 }
 
 function wrap(canvas: HTMLCanvasElement): CanvasTexture {
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('2d context unavailable')
-  return finish(ctx, false)
+  return finishText(ctx)
 }
 
 /* ---------------------------------------------------------------------
@@ -133,7 +153,7 @@ export function makeStrip(
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillText(text, ctx.canvas.width / 2, h / 2 + 2)
-  return { tex: finish(ctx, false), aspect: ctx.canvas.width / h }
+  return { tex: finishText(ctx), aspect: ctx.canvas.width / h }
 }
 
 /** Engraved brass plate screwed to the crown of the case. */
@@ -169,5 +189,5 @@ export function makePlacard(line: string, sub: string): CanvasTexture {
     ctx.lineTo(x + 6, H / 2)
     ctx.stroke()
   }
-  return finish(ctx, false)
+  return finishText(ctx)
 }

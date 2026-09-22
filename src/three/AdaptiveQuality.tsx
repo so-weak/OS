@@ -1,39 +1,88 @@
 import { useEffect, useRef, useState } from 'react'
-import { useFrame, useThree } from '@react-three/fiber'
-import { PerformanceMonitor } from '@react-three/drei'
+import { useFrame, useStore, useThree } from '@react-three/fiber'
+import type { WebGLRenderer } from 'three'
+import { useLoad } from '../loadProgress'
 import { useSystem } from '../os/store'
 import { useFrameGoverned } from './FrameGovernor'
+import { useLibrary } from './libraryState'
+import { usePins } from './pinState'
 
 /* =====================================================================
    Adaptive resolution.
 
    The room is fill-rate bound (every lit pixel pays for several lights),
    so the canvas resolution is the one dial that scales the cost of the
-   whole picture. It starts at min(devicePixelRatio, 1.25) — a Retina
-   laptop does not need 4x the pixels of a 1x monitor to read a room this
-   soft — and drei's PerformanceMonitor walks it down when the frame rate
-   sags and back up when there is headroom, one step at a time inside
-   [0.75, 1.5]. After a few flip-flops it stops and keeps the lower step
-   (no visible pumping).
+   whole picture — and it is also what decides whether the lettering in
+   the room (nameplate, drawer cards, posters, spines, the clock plate)
+   reads sharp. A canvas below the display's own ratio is stretched by the
+   browser: at the old 1.25 cap a Retina screen blew every label up 1.6x
+   and blurred it. So:
 
-   While the CRT fills the screen the 3D behind the glass barely matters
-   (the OS is DOM and unaffected by the canvas resolution), so the canvas
-   is capped at 1.0 there and restored the moment the camera pulls back.
+   - The ceiling is the display's own ratio, up to 2 (TOP).
+   - Where the GPU is known to be fast (Apple silicon, discrete NVIDIA /
+     AMD) the canvas STARTS at the ceiling; anywhere else it starts at
+     1.25 and has to earn its way up.
+   - A light meter then measures the room view (8 x 250 ms windows,
+     judged on the median; ~6 s of sustained sag before it steps down,
+     so a passing hitch never costs sharpness). When the rate
+     sags it steps down in ONE move
+     to the rung the measured fps says the GPU can carry (fill cost ~
+     ratio²), not one 0.25 rung per 2 s — a slow machine never sits
+     through seconds of stutter at 2x. When it has headroom it climbs one
+     rung at a time, back to the ceiling.
+   - Every step down is a probe: if the next verdict shows it bought
+     (almost) no frames, the time is going somewhere else (main thread,
+     a GPU shared with other tabs) and lower resolution would only have
+     cost sharpness — the rung goes back up and becomes a floor. (The old
+     monitor walked such machines all the way to 0.75x: a blurry room
+     that was no faster.)
+   - Hysteresis: separate decline/incline bounds, and after a few real
+     reversals (down, up, down...) it stops climbing and keeps the lower
+     rung, so it never visibly pumps.
+   - Lettering views (the library shelf, the cork board up close) get two
+     rungs more than the room, up to the ceiling: that is where the text
+     is, and the camera is parked while you read.
+   - While the CRT fills the screen the 3D behind the glass barely
+     matters (the OS is DOM and unaffected by the canvas resolution), so
+     the canvas is capped at 1.0 there and restored when the camera pulls
+     back.
 
-   The monitor only starts once the scene has settled — long load frames
-   must not count as a slow machine.
+   The monitor only starts once the room has been revealed (SceneReady's
+   warm-up frames are not drawn and must not count as a slow machine).
    ===================================================================== */
 
-/** the ladder of pixel ratios the monitor may stand on */
-const STEPS = [0.75, 1, 1.25, 1.5]
+/** the ladder of pixel ratios */
+const STEPS = [0.75, 1, 1.25, 1.5, 1.75, 2]
 /** never above this, whatever the display */
-const MAX_DPR = 1.5
-/** default rung: min(devicePixelRatio, 1.25) */
-const START_DPR = 1.25
+const MAX_DPR = 2
+/** where an unknown / integrated GPU starts */
+const SLOW_START_DPR = 1.25
 /** cap while the OS is on screen */
 const SCREEN_DPR = 1
-/** frames to let the load settle before the monitor listens */
-const SETTLE_FRAMES = 150
+/** extra rungs for the lettering views (library, cork board) */
+const TEXT_BOOST = 2
+/** on a high-density display the room never goes below this: 1.0 is
+    already the pixel count of a plain 1x laptop, and 0.75 on a Retina
+    panel stretches every label 2.7x (the fill model can overshoot to it
+    when a busy machine sags for a few seconds) */
+const HIDPI_FLOOR_DPR = 1
+/** frames after the reveal before the monitor listens (or SETTLE_MS,
+    whichever comes first — a GPU that can't carry the start rung must
+    not sit through 90 slow frames before anyone looks) */
+const SETTLE_FRAMES = 90
+const SETTLE_MS = 1200
+/** ...or after this many frames whatever the load state says */
+const SETTLE_FALLBACK = 600
+/** direction reversals before the rung is pinned (no pumping) */
+const MAX_REVERSALS = 3
+/** the meter: this many windows of this length per verdict (~2 s) */
+const WINDOW_MS = 250
+const WINDOWS = 8
+/** verdicts in a row before the rung moves: ~6 s of sag to step down
+    (a lazy build, a busy tab next door or a GC must not cost the room
+    its sharpness), ~4 s of headroom to climb back */
+const SUSTAIN_DOWN = 3
+const SUSTAIN_UP = 2
 
 function stepFor(dpr: number): number {
   let best = 0
@@ -41,74 +90,206 @@ function stepFor(dpr: number): number {
   return best
 }
 
+/** The unmasked renderer string says whether 2x is affordable. */
+function isFastGpu(gl: WebGLRenderer): boolean {
+  try {
+    const ctx = gl.getContext()
+    let name = String(ctx.getParameter(ctx.RENDERER) ?? '')
+    // Chrome/Safari mask RENDERER as "WebKit WebGL" and keep the real
+    // name behind the debug extension. Firefox reports it (sanitised)
+    // directly and warns when the extension is touched, so only ask
+    // when masked.
+    if (/^webkit webgl$/i.test(name.trim())) {
+      const ext = ctx.getExtension('WEBGL_debug_renderer_info')
+      if (ext) name = String(ctx.getParameter(ext.UNMASKED_RENDERER_WEBGL) ?? name)
+    }
+    if (/swiftshader|llvmpipe|software|basic render/i.test(name)) return false
+    return /apple (m\d|gpu)|nvidia|geforce|rtx|quadro|radeon (rx|pro)/i.test(name)
+  } catch {
+    return false
+  }
+}
+
+/** The canvas ratio for a view, given the room's chosen rung. */
+function dprFor(view: string, textView: boolean, rung: number, top: number): number {
+  if (view === 'screen') return Math.min(STEPS[rung], SCREEN_DPR)
+  if (textView) return STEPS[Math.min(top, rung + TEXT_BOOST)]
+  return STEPS[rung]
+}
+
 export default function AdaptiveQuality() {
+  const gl = useThree((s) => s.gl)
   const setDpr = useThree((s) => s.setDpr)
   const view = useSystem((s) => s.view)
+  const libraryOpen = useLibrary((s) => s.open)
+  const boardOpen = usePins((s) => s.open)
+  const revealed = useLoad((s) => s.revealed)
   const [settled, setSettled] = useState(false)
   const frames = useRef(0)
+  const sinceReveal = useRef(0)
+  const revealedAt = useRef(0)
   // FrameGovernor drops the render loop to ~30Hz after ~8s idle; without
-  // this, that governed rate reads to PerformanceMonitor as a slow
+  // this, that governed rate reads to the meter as a slow
   // machine and it pumps the DPR down, then back up the moment input
   // resumes and the loop returns to full rate — visible pumping from a
   // deliberate idle optimisation, not an actual perf problem. Idle just
-  // unmounts the monitor; the chosen rung is kept as-is until active again.
+  // pauses the meter; the chosen rung is kept as-is until active again.
   const governed = useFrameGoverned()
 
-  // the rung the monitor has chosen (never touched by the screen cap)
-  const rung = useRef(
-    stepFor(Math.min(START_DPR, MAX_DPR, window.devicePixelRatio || 1)),
-  )
+  /** the highest rung this display can use */
   const top = stepFor(Math.min(MAX_DPR, Math.max(1, window.devicePixelRatio || 1)))
+  const [startRung] = useState(() =>
+    isFastGpu(gl) ? top : Math.min(top, stepFor(SLOW_START_DPR)),
+  )
+  /** the rung the monitor has chosen for the room view */
+  const rung = useRef(startRung)
   const lastMove = useRef<'up' | 'down' | null>(null)
+  const reversals = useRef(0)
+  /** climbing stops once the rung has been pinned */
+  const pinned = useRef(false)
 
-  const apply = (v: string) => {
-    const want = STEPS[rung.current]
-    setDpr(v === 'screen' ? Math.min(want, SCREEN_DPR) : want)
+  const textView = libraryOpen || boardOpen
+
+  /* The ratio this monitor wants, held against the Canvas's own `dpr`
+     prop. R3F re-applies that prop ([1, 2]) every time <Canvas> renders,
+     and it renders whenever App does (view, power, paper, shelf changes):
+     without this, the OS view's 1.0 cap and every step down lasted only
+     until the next such render, which put the canvas straight back at
+     the display ratio. */
+  const store = useStore()
+  const want = useRef(0)
+  const place = (dpr: number) => {
+    want.current = dpr
+    setDpr(dpr)
   }
+  useEffect(
+    () =>
+      store.subscribe((s) => {
+        const w = want.current
+        if (w > 0 && Math.abs(s.viewport.dpr - w) > 1e-6) s.setDpr(w)
+      }),
+    [store],
+  )
 
-  // wait for the scene to settle, without re-rendering every frame
+  const apply = () => place(dprFor(view, textView, rung.current, top))
+
+  // wait for the reveal to settle, without re-rendering every frame
   useFrame(() => {
     if (settled) return
-    if (++frames.current >= SETTLE_FRAMES) setSettled(true)
+    frames.current++
+    if (useLoad.getState().revealed) {
+      const now = performance.now()
+      if (sinceReveal.current++ === 0) revealedAt.current = now
+      if (sinceReveal.current >= SETTLE_FRAMES || now - revealedAt.current >= SETTLE_MS) {
+        setSettled(true)
+        return
+      }
+    }
+    if (frames.current >= SETTLE_FALLBACK) setSettled(true)
   })
 
+  // before the first drawn frame, and on every view change
   useEffect(() => {
-    setDpr(view === 'screen' ? Math.min(STEPS[rung.current], SCREEN_DPR) : STEPS[rung.current])
-  }, [view, setDpr])
+    want.current = dprFor(view, textView, rung.current, top)
+    setDpr(want.current)
+  }, [view, textView, top, setDpr])
 
-  // only the room view is measured: zooming and the OS have their own cost
-  const monitoring = settled && view === 'room' && !governed
+  const move = (dir: 'up' | 'down', to: number) => {
+    if (to === rung.current) return
+    if (lastMove.current && lastMove.current !== dir && ++reversals.current >= MAX_REVERSALS) {
+      // pumping between rungs: keep the lower one and stop climbing
+      pinned.current = true
+      to = Math.min(to, rung.current)
+    }
+    rung.current = to
+    lastMove.current = dir
+    apply()
+  }
 
-  return monitoring ? (
-    <PerformanceMonitor
-      ms={250}
-      iterations={8}
-      threshold={0.7}
-      flipflops={4}
-      // 60 Hz: step down under 45 fps, up at (nearly) full rate;
-      // 120 Hz panels: 80 / 110
-      bounds={(hz) => (hz > 100 ? [80, 110] : [45, 57])}
-      onDecline={() => {
-        if (rung.current > 0) {
-          rung.current--
-          lastMove.current = 'down'
-          apply('room')
-        }
-      }}
-      onIncline={() => {
-        if (rung.current < top) {
-          rung.current++
-          lastMove.current = 'up'
-          apply('room')
-        }
-      }}
-      onFallback={() => {
-        // pumping between two rungs: settle on the lower one
-        if (lastMove.current === 'up' && rung.current > 0) {
-          rung.current--
-          apply('room')
-        }
-      }}
-    />
-  ) : null
+  // only the plain room view is measured: zooming, the OS and the
+  // lettering views have their own cost and their own rule above
+  const monitoring = settled && revealed && view === 'room' && !textView && !governed
+
+  /* The meter: WINDOWS windows of WINDOW_MS, judged on their median. */
+  const meter = useRef({ t0: 0, n: 0, samples: [] as number[], hz: 0 })
+  /** the last step down, until the next verdict says whether it helped */
+  const probe = useRef<{ from: number; fps: number } | null>(null)
+  /** never below this: a drop that bought no frames proved the machine
+      is not fill-bound, so lower resolution would only cost sharpness */
+  const floor = useRef(top >= stepFor(1.5) ? stepFor(HIDPI_FLOOR_DPR) : 0)
+
+  /** consecutive verdicts below / above the bounds */
+  const streak = useRef({ bad: 0, good: 0 })
+
+  const judge = (fps: number, hz: number) => {
+    // 60 Hz: step down under 45 fps, up at (nearly) full rate;
+    // 120 Hz panels: 80 / 110
+    const [down, up] = hz > 100 ? [80, 110] : [45, 57]
+    const st = streak.current
+    const p = probe.current
+    if (p) {
+      probe.current = null
+      if (fps < up && fps < p.fps * 1.15) {
+        // the last drop bought (almost) nothing: the time goes elsewhere
+        // (main thread, a GPU shared with other tabs). Put the
+        // sharpness back and never trade it away again this visit.
+        floor.current = p.from
+        rung.current = p.from
+        st.bad = st.good = 0
+        apply()
+        return
+      }
+    }
+    // only a SUSTAINED sag or surplus moves the rung (a hitch from a
+    // lazy build or another tab must not cost the room its sharpness)
+    if (fps < down) {
+      st.good = 0
+      if (++st.bad < SUSTAIN_DOWN) return
+    } else if (fps >= up) {
+      st.bad = 0
+      if (++st.good < SUSTAIN_UP) return
+    } else {
+      st.bad = st.good = 0
+      return
+    }
+    st.bad = st.good = 0
+    if (fps < down) {
+      if (rung.current <= floor.current) return
+      // fill-bound: fps ~ 1 / ratio². Jump straight to the rung the
+      // measured rate says will hold the upper bound.
+      const fit = STEPS[rung.current] * Math.sqrt(Math.max(fps, 1) / up)
+      const to = Math.max(floor.current, Math.min(rung.current - 1, stepFor(fit)))
+      probe.current = { from: rung.current, fps }
+      move('down', to)
+    } else if (!pinned.current && rung.current < top) {
+      move('up', rung.current + 1)
+    }
+  }
+
+  useFrame(() => {
+    const m = meter.current
+    if (!monitoring) {
+      m.t0 = 0
+      m.samples.length = 0
+      return
+    }
+    const now = performance.now()
+    if (!m.t0) {
+      m.t0 = now
+      m.n = 0
+      return
+    }
+    m.n++
+    if (now - m.t0 < WINDOW_MS) return
+    const fps = (m.n * 1000) / (now - m.t0)
+    m.hz = Math.max(m.hz, fps)
+    m.samples.push(fps)
+    m.t0 = now
+    m.n = 0
+    if (m.samples.length < WINDOWS) return
+    const sorted = m.samples.splice(0).sort((a, b) => a - b)
+    judge(sorted[sorted.length >> 1], m.hz)
+  })
+
+  return null
 }
