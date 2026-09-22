@@ -382,6 +382,8 @@ export default function Mouse() {
   const body = useRef<Group>(null!)
   const cable = useRef<Mesh>(null!)
   const prevX = useRef(0)
+  /** pose (x, z, yaw) the cable was last solved for; NaN forces the first solve */
+  const solved = useRef([NaN, NaN, NaN])
   const camera = useThree((s) => s.camera)
   const shadowTex = useMemo(() => makeSoftCircle(), [])
   const mouseGeo = useMemo(() => buildMouse(), [])
@@ -446,6 +448,18 @@ export default function Mouse() {
 
     // the cable follows: out of the boot along the mouse's own heading
     const psi = g.rotation.y
+    // ...but only when the mouse actually moved: solving rebuilds and
+    // re-uploads the tube's vertices, and every rebuild also asks the shadow
+    // scheduler for a fresh depth pass
+    const last = solved.current
+    if (
+      Math.abs(g.position.x - last[0]) + Math.abs(g.position.z - last[1]) + Math.abs(psi - last[2]) <
+      2e-6
+    )
+      return
+    last[0] = g.position.x
+    last[1] = g.position.z
+    last[2] = psi
     const sn = Math.sin(psi)
     const cs = Math.cos(psi)
     const bz = M.zf - 0.0115 // boot tip in body space
