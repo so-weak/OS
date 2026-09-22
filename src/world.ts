@@ -6,7 +6,9 @@ import { createJSONStorage, persist } from 'zustand/middleware'
    when nobody is touching anything.
 
    - Persistence: the only file allowed to touch localStorage. Visits,
-     the ledger of found secrets, duck clicks, the Snake high score,
+     the ledger of found secrets, labubu clicks (field/action names below
+     still say "duck" — see the comment on duckClicks — the toy on the
+     CRT changed, this store didn't need to), the Snake high score,
      mute, the blinds. Everything else on the site is session state.
    - Clock: the desk is in Bengaluru and keeps Bengaluru time; the
      visitor's own clock is for greetings and the taskbar only.
@@ -34,6 +36,7 @@ export interface LedgerEntry {
 export const LEDGER: readonly LedgerEntry[] = [
   { id: 'lamp', riddle: 'the room has a mood, and a switch for it', done: 'mood lighting' },
   { id: 'sunrise', riddle: 'the window has two moods', done: 'let the sun in' },
+  // id kept as duck10 (now labubu): persisted in found[], renaming would orphan saves
   { id: 'duck10', riddle: 'something on this desk rewards persistence', done: 'the golden debugger' },
   { id: 'snake25', riddle: 'the snake keeps score. beat 25.', done: 'nibbles, 25 and up' },
   { id: 'streak3', riddle: 'three in a row, into the bin', done: 'hat-trick' },
@@ -61,6 +64,10 @@ interface Persisted {
   firstAt: number
   lastAt: number
   found: string[]
+  /** clicks on the desk toy — now labubu (Labubu.tsx). Field name kept as
+      duckClicks, same as bumpDuck() below and DUCK_GOLDEN_AT in eggs.ts:
+      all three are persisted (localStorage), so renaming any of them
+      would reset every returning visitor's progress for a cosmetic swap. */
   duckClicks: number
   snakeHi: number
   muted: boolean

@@ -12,6 +12,9 @@ import { useSystem } from './store'
 let ctx: AudioContext | null = null
 let master: GainNode | null = null
 let unlockBound = false
+/** a gesture has happened: ambience layers (rainSound.ts) may start */
+let unlocked = false
+const unlockListeners = new Set<() => void>()
 
 function createContext(): void {
   if (ctx || typeof window === 'undefined') return
@@ -35,6 +38,14 @@ function bindUnlock(): void {
     if (ctx && ctx.state === 'suspended') {
       void ctx.resume().catch(() => undefined)
     }
+    unlocked = true
+    for (const fn of unlockListeners) {
+      try {
+        fn()
+      } catch {
+        /* a listener must never break the unlock */
+      }
+    }
   }
   window.addEventListener('pointerdown', unlock, { passive: true })
   window.addEventListener('keydown', unlock, { passive: true })
@@ -51,6 +62,22 @@ function out(): { ac: AudioContext; bus: GainNode } | null {
     return { ac: ctx, bus: master }
   } catch {
     return null
+  }
+}
+
+/** The same bus, named for ambience layers that live in their own file
+    (rainSound.ts): the one AudioContext, the one master gain. */
+export { out as audioBus }
+/** Has the visitor made a gesture yet? (browsers gate audio until then) */
+export function audioUnlocked(): boolean {
+  return unlocked
+}
+/** Called on every pointerdown/keydown after the context is created.
+    Returns the unsubscribe. */
+export function onAudioUnlock(fn: () => void): () => void {
+  unlockListeners.add(fn)
+  return () => {
+    unlockListeners.delete(fn)
   }
 }
 
@@ -173,6 +200,39 @@ export function playBeep(): void {
       dur: 0.13,
       peak: 0.1,
       attack: 0.005,
+    })
+  } catch {
+    /* stay silent */
+  }
+}
+
+/** Squeaky-toy giggle — three quick rising chirps through a narrow
+    band-pass, like a plush toy's squeeze-box. Labubu's click sound
+    (replaces the old rubber duck's playBeep()). Under half a second. */
+export function playLabubuGiggle(): void {
+  try {
+    if (throttled('labubu', 60)) return
+    const o = out()
+    if (!o) return
+    const { ac, bus } = o
+    const t = ac.currentTime
+
+    const bp = ac.createBiquadFilter()
+    bp.type = 'bandpass'
+    bp.frequency.value = 2100
+    bp.Q.value = 3.2
+    bp.connect(bus)
+
+    ;[0, 0.1, 0.2].forEach((offset, i) => {
+      tone(ac, bp, {
+        type: 'triangle',
+        freq: 920 + i * 160,
+        glideTo: 1500 + i * 220,
+        t0: t + offset,
+        dur: 0.09,
+        peak: 0.085,
+        attack: 0.004,
+      })
     })
   } catch {
     /* stay silent */

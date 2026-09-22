@@ -8,7 +8,8 @@ import { useWorld } from '../world'
    modules' stores.
    ===================================================================== */
 
-/** after this many debugging sessions the duck ascends (Duck.tsx, Terminal) */
+/** after this many debugging sessions labubu ascends (Labubu.tsx, Terminal).
+    Kept as DUCK_GOLDEN_AT — see duckClicks below, same reason. */
 export const DUCK_GOLDEN_AT = 10
 
 interface EggsState {
@@ -16,8 +17,12 @@ interface EggsState {
   bsod: boolean
   /** konami-code "hacker mode" — green phosphor look on the OS root */
   hacker: boolean
-  /** clicks on the rubber duck in the 3D room — persisted by the world
-      store, mirrored here so the duck keeps its colour across visits */
+  /** clicks on labubu in the 3D room — persisted by the world store,
+      mirrored here so it keeps its colour across visits. Field/action
+      names below (duckClicks, bumpDuck, clickDuck, and the ledger id
+      duck10 in world.ts) are unchanged from when this was a rubber duck:
+      they're written to localStorage and the found[] ledger, so renaming
+      them would orphan every visitor's saved progress for no real gain. */
   duckClicks: number
   triggerBsod: () => void
   dismissBsod: () => void
@@ -40,9 +45,9 @@ export const useEggs = create<EggsState>((set) => ({
   },
 }))
 
-/* The world is the source of truth for the duck: when it forgets
-   (terminal `forget`) or rehydrates, the mirror follows and the duck
-   goes back to factory yellow. */
+/* The world is the source of truth for labubu: when it forgets
+   (terminal `forget`) or rehydrates, the mirror follows and labubu
+   goes back to factory pink. */
 useWorld.subscribe((w) => {
   if (w.duckClicks !== useEggs.getState().duckClicks) {
     useEggs.setState({ duckClicks: w.duckClicks })

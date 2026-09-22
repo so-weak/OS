@@ -38,7 +38,7 @@ concept is retro-OS-portfolio, but all geometry, pixels, CSS and copy are ours.
 - `src/data/resume.ts` — identity, summary, skills, projects (with `art`
   paths under /projects/), experience, education, awards, certifications.
 - `src/os/eggs.ts` — `useEggs` shared easter-egg store (bsod, hacker mode,
-  duck clicks). Shell renders the overlays; anyone may trigger them.
+  labubu clicks). Shell renders the overlays; anyone may trigger them.
 - `src/world.ts` — THE memory, clock and idle detector (see "The world"
   below). The only file that touches localStorage.
 - `src/three/live.ts` — the per-frame damped light values the whole room
@@ -218,7 +218,7 @@ has been drawn yet.
 ## Easter eggs (mandate: go above and beyond)
 
 Each module ships its assigned eggs — tasteful, discoverable, never
-invented resume facts. Room props react to clicks (duck, lamp, tower power
+invented resume facts. Room props react to clicks (labubu, lamp, tower power
 button, floppy). Konami code → hacker mode. Terminal hides gag commands
 (`sudo`, `format c:`, `matrix`, `neofetch`, `crash`, `library`…).
 BIOS/BSOD carry period-correct jokes. Snake keeps a localStorage high

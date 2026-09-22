@@ -68,13 +68,13 @@ function firstVisitBlurb(hour: number): string {
 function returnBlurb(
   visits: number,
   snakeHi: number,
-  duckClicks: number,
+  labubuClicks: number,
   found: string[],
 ): string {
   const clauses: string[] = []
   if (snakeHi > 0)
     clauses.push(`the snake kept your score (HI ${String(snakeHi).padStart(3, '0')})`)
-  if (duckClicks > 0) clauses.push('the duck kept its colour')
+  if (labubuClicks > 0) clauses.push('labubu kept its colour')
   const known = found.filter((id) => LEDGER.some((e) => e.id === id)).length
   if (known >= 1) {
     const left = LEDGER.length - known
@@ -91,7 +91,7 @@ function returnBlurb(
 /** The footer whisper: one unfound riddle at a time, rotating. */
 function useRiddle(found: string[]): string {
   const pool = LEDGER.filter((e) => !found.includes(e.id)).map((e) => e.riddle)
-  const lines = found.length === 0 ? ['the duck knows things', ...pool] : pool
+  const lines = found.length === 0 ? ['labubu knows things', ...pool] : pool
   const [i, setI] = useState(0)
   useEffect(() => {
     if (lines.length < 2) return
@@ -111,12 +111,13 @@ export default function Welcome({ windowId }: AppProps) {
   const hour = useWorld((s) => s.hour)
   const visits = useWorld((s) => s.visits)
   const snakeHi = useWorld((s) => s.snakeHi)
-  const duckClicks = useWorld((s) => s.duckClicks)
+  // store field is still duckClicks (persisted key, kept — see eggs.ts)
+  const labubuClicks = useWorld((s) => s.duckClicks)
   const found = useWorld((s) => s.found)
   const riddle = useRiddle(found)
 
   const blurb = RETURNING
-    ? returnBlurb(visits, snakeHi, duckClicks, found)
+    ? returnBlurb(visits, snakeHi, labubuClicks, found)
     : firstVisitBlurb(hour)
 
   return (

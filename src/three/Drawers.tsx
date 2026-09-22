@@ -48,7 +48,7 @@ import {
 
 const PED = { w: 0.42, d: 0.5, h: DESK_TOP - DESK.thick } as const
 const FRONT = PED.d / 2 // local z of the pedestal face
-const SLIDE = 0.23 // how far a tray pulls out
+const SLIDE = 0.25 // how far a tray pulls out: its back board clears the front plate
 
 /* Floppy labels — REAL project names pulled from resume.ts, shortened to
    fit a 3.5" label (first word-group of the name, uppercased). */
@@ -84,7 +84,7 @@ function starGeometry(): ExtrudeGeometry {
 function makeEnvelopeNote(complete: boolean): CanvasTexture {
   if (!complete) return makeLabel('NICE TRY!', '#1a1812', '#fdfcf7', 6, 10)
   const big = 'OK. FINE.'
-  const small = ['THE DUCK SAID', 'YOU WOULD. - S.']
+  const small = ['LABUBU SAID', 'YOU WOULD. - S.']
   const BIG = 6
   const SMALL = 4
   const PAD = 10
@@ -162,7 +162,7 @@ function buildCarcass(): BufferGeometry {
         woodBox(0.4, PED.h - 0.07, 0.012, 0.002, 1, 0.4, 'x'),
         0,
         0.07 + (PED.h - 0.07) / 2,
-        0.234,
+        0.231,
       ),
       '#3a3128',
     ),
