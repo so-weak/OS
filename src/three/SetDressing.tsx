@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import {
+  BufferGeometry,
   CatmullRomCurve3,
   Color,
   DoubleSide,
@@ -12,13 +13,24 @@ import {
   type CanvasTexture,
   type InstancedMesh,
 } from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { playClick } from '../os/sound'
+import { useSystem } from '../os/store'
 import { reducedMotion } from '../world'
 import { WINDOW } from './layout'
+import Clickable from './Clickable'
 import Crocs from './Crocs'
+import { canTransition } from './live'
+import { useLibrary } from './libraryState'
+import { PinFocus, PinPrints } from './PinUps'
+import { pinHeadGeo } from './pinParts'
+import { BOARD, CORK_Z, PRINTS, printPin, usePins } from './pinState'
+import { useRoom } from './roomState'
 import { FramedPrint } from './Room'
 import { makeFeatheredRect } from './textures'
 import { plasterMaps } from './tex/noise'
 import {
+  CARDS,
   bagGeo,
   bluePotGeo,
   boxesGeo,
@@ -70,7 +82,9 @@ export default function SetDressing() {
       <Radiator />
       <SillPlant />
       <Headphones position={[0.445, 1.14, WALL_Z + 0.0005]} />
-      <CorkBoard position={[0.87, 1.06, WALL_Z + 0.0005]} tilt={0.008} />
+      <CorkBoard position={[BOARD.x, BOARD.y, BOARD.z]} tilt={BOARD.tilt} />
+      {/* the close-up's scrim, input layer and keys (see PinUps) */}
+      <PinFocus />
       <Crocs position={[-0.02, 0, -0.86]} />
       {/* the right-hand side: a rubber plant, boxes, a print, a cloth bag */}
       <Plant position={[1.4, 0, -0.84]} />
@@ -361,7 +375,10 @@ function Headphones({ position }: { position: [number, number, number] }) {
   )
 }
 
-/* ---------- cork board with pinned cards ---------- */
+/* ---------- cork board: four photographs, a few paper cards ----------
+   The photographs (PinPrints, PinUps.tsx) are the hero; what is left of
+   the old clutter is pinned in the corner they leave. Clicking anywhere on
+   the board sends the camera to a straight-on close-up (pinState.ts). */
 const CORK_FRAME: ProfilePt[] = [
   [0.018, 0.005],
   [0.018, 0.0135],
@@ -378,6 +395,10 @@ function CorkBoard({
   position: [number, number, number]
   tilt?: number
 }) {
+  const view = useSystem((s) => s.view)
+  const boardOpen = usePins((s) => s.open)
+  const libraryOpen = useLibrary((s) => s.open)
+  const paperUp = useRoom((s) => s.paperUp)
   const cork = useMemo(() => makeCorkMaps(6), [])
   const atlas = useMemo(() => makeCardAtlas(9), [])
   const blob = useMemo(() => makeFeatheredRect(64, 64, 0.6), [])
@@ -403,35 +424,46 @@ function CorkBoard({
     return m
   }, [])
   const cards = useMemo(() => cardsGeo(), [])
-  const pinGeo = useMemo(() => new SphereGeometry(0.0048, 8, 6), [])
+  const pinGeo = useMemo(() => pinHeadGeo(), [])
+  /** every pushpin on the board: the cards' and the photographs' */
+  const pts = useMemo(() => [...cards.pins, ...PRINTS.map(printPin)], [cards])
   const pinsRef = useRef<InstancedMesh>(null)
+  /* red yarn: along the tops of the three portraits, and between the two
+     index cards; each strand sags a little between its pins */
   const yarn = useMemo(() => {
-    const p = cards.pins
-    const a = new Vector3(p[0].x, p[0].y, p[0].z + 0.0018)
-    const b = new Vector3(p[1].x, p[1].y, p[1].z + 0.0018)
-    const c = new Vector3(p[6].x, p[6].y, p[6].z + 0.0018)
-    const sag = (u: Vector3, v: Vector3, k: number) => new Vector3().addVectors(u, v).multiplyScalar(0.5).add(new Vector3(0, -k, 0.001))
-    return new TubeGeometry(
-      new CatmullRomCurve3([a, sag(a, b, 0.02), b, sag(b, c, 0.014), c]),
-      48,
-      0.0009,
-      5,
-    )
-  }, [cards])
+    const at = (id: string) => {
+      const p = pts.find((q) => q.id === id)
+      return new Vector3(p ? p.x : 0, p ? p.y : 0, (p ? p.z : 0) + 0.0014)
+    }
+    const strand = (ids: string[], sag: number) => {
+      const v = ids.map(at)
+      const path: Vector3[] = [v[0]]
+      for (let i = 1; i < v.length; i++) {
+        const mid = new Vector3().addVectors(v[i - 1], v[i]).multiplyScalar(0.5)
+        path.push(mid.add(new Vector3(0, -sag, 0.001)), v[i])
+      }
+      return new TubeGeometry(new CatmullRomCurve3(path), 48, 0.0009, 5)
+    }
+    const parts = [strand(['wall', 'lift', 'io'], 0.006), strand(['todo', 'net'], 0.012)]
+    const merged = mergeGeometries(parts)
+    parts.forEach((g) => g.dispose())
+    return merged ?? new BufferGeometry()
+  }, [pts])
 
   useEffect(() => {
     const m = pinsRef.current
     if (!m) return
     const mat = new Matrix4()
     const col = new Color()
-    cards.pins.forEach((p, i) => {
-      mat.makeScale(1, 1, 0.62).setPosition(p.x, p.y, p.z + 0.0018)
+    pts.forEach((p, i) => {
+      // p.z is 1.2 mm above the paper; the pin's flange rests on it
+      mat.makeTranslation(p.x, p.y, p.z - 0.0008)
       m.setMatrixAt(i, mat)
       m.setColorAt(i, col.set(p.color))
     })
     m.instanceMatrix.needsUpdate = true
     if (m.instanceColor) m.instanceColor.needsUpdate = true
-  }, [cards])
+  }, [pts])
 
   useEffect(
     () => () => {
@@ -441,7 +473,6 @@ function CorkBoard({
       frame.dispose()
       wood.dispose()
       cards.cards.dispose()
-      cards.shadows.dispose()
       pinGeo.dispose()
       yarn.dispose()
     },
@@ -451,43 +482,46 @@ function CorkBoard({
   return (
     <group position={position} rotation-z={tilt}>
       <WallShadow blob={blob} w={0.58} h={0.44} x={0.008} y={-0.012} opacity={0.6} />
-      <mesh geometry={frame} castShadow receiveShadow>
-        <meshStandardMaterial
-          map={wood.map}
-          normalMap={wood.normalMap}
-          roughnessMap={wood.roughnessMap}
-          roughness={1}
-        />
-      </mesh>
-      {/* backer, then the cork */}
-      <mesh position={[0, 0, 0.0025]}>
-        <roundedBoxGeometry args={rb(0.5, 0.36, 0.005, 0.001, 1)} />
-        <meshStandardMaterial color="#5b4028" roughness={0.9} />
-      </mesh>
-      <mesh position={[0, 0, 0.0056]} receiveShadow>
-        <planeGeometry args={[0.47, 0.33]} />
-        <meshStandardMaterial map={cork.map} normalMap={cork.normalMap} roughness={0.95} />
-      </mesh>
-      <mesh geometry={cards.shadows} renderOrder={2}>
-        <meshBasicMaterial
-          map={blob}
-          color="#000000"
-          transparent
-          opacity={0.5}
-          depthWrite={false}
-        />
-      </mesh>
-      <group position={[0, 0, 0.0056]}>
-        <mesh geometry={cards.cards} castShadow receiveShadow>
-          <meshStandardMaterial map={atlas} roughness={0.9} side={DoubleSide} />
+      <Clickable
+        enabled={view === 'room' && !boardOpen && !libraryOpen && !paperUp}
+        label="the pin-up board"
+        onActivate={() => {
+          if (!canTransition()) return
+          playClick()
+          usePins.getState().openBoard()
+        }}
+      >
+        <mesh geometry={frame} castShadow receiveShadow>
+          <meshStandardMaterial
+            map={wood.map}
+            normalMap={wood.normalMap}
+            roughnessMap={wood.roughnessMap}
+            roughness={1}
+          />
         </mesh>
-        <instancedMesh ref={pinsRef} args={[pinGeo, undefined, cards.pins.length]} frustumCulled={false} castShadow>
-          <meshStandardMaterial roughness={0.32} metalness={0.05} />
-        </instancedMesh>
-        <mesh geometry={yarn}>
-          <meshStandardMaterial color="#b3271f" roughness={0.95} />
+        {/* backer, then the cork */}
+        <mesh position={[0, 0, 0.0025]}>
+          <roundedBoxGeometry args={rb(0.5, 0.36, 0.005, 0.001, 1)} />
+          <meshStandardMaterial color="#5b4028" roughness={0.9} />
         </mesh>
-      </group>
+        <mesh position={[0, 0, CORK_Z]} receiveShadow>
+          <planeGeometry args={[0.47, 0.33]} />
+          <meshStandardMaterial map={cork.map} normalMap={cork.normalMap} roughness={0.95} />
+        </mesh>
+        <group position={[0, 0, CORK_Z]}>
+          {/* the photographs, and every contact shadow on the cork */}
+          <PinPrints cards={CARDS} blob={blob} />
+          <mesh geometry={cards.cards} castShadow receiveShadow>
+            <meshStandardMaterial map={atlas} roughness={0.9} side={DoubleSide} />
+          </mesh>
+          <instancedMesh ref={pinsRef} args={[pinGeo, undefined, pts.length]} frustumCulled={false} castShadow>
+            <meshStandardMaterial roughness={0.32} metalness={0.05} />
+          </instancedMesh>
+          <mesh geometry={yarn}>
+            <meshStandardMaterial color="#b3271f" roughness={0.95} />
+          </mesh>
+        </group>
+      </Clickable>
     </group>
   )
 }

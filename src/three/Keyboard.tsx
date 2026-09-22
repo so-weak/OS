@@ -24,6 +24,7 @@ import { playBeep, playClick } from '../os/sound'
 import { useWorld } from '../world'
 import Halo from './Halo'
 import { useLibrary } from './libraryState'
+import { usePins } from './pinState'
 import { useRoom } from './roomState'
 import { DESK_TOP, P } from './layout'
 import { rb } from './rbox'
@@ -649,8 +650,9 @@ export default function Keyboard() {
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (useSystem.getState().view !== 'room') return
-      // typing into a field (or searching the library) is not desk typing
-      if (useLibrary.getState().open) return
+      // typing into a field (or searching the library) is not desk typing;
+      // nor is Esc / the arrow keys at the pin-up board
+      if (useLibrary.getState().open || usePins.getState().open) return
       const el = e.target as HTMLElement | null
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return
       const idx = codeIndex.get(e.code)

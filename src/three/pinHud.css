@@ -1,0 +1,52 @@
+/* ---------- the pin-up board close-up ----------
+   The twin of the library's HUD (hud.css .lib-hud): same brass plates, same
+   VT323 at 18px. Portalled to <body>, so it sits above #root's stacking
+   context and never reaches the canvas's pointer events. */
+.pin-hud {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+}
+.pin-back,
+.pin-step,
+.pin-count {
+  font-family: var(--font-term);
+  font-size: 18px;
+  color: #f0dfb8;
+  background: rgba(24, 16, 8, 0.78);
+  border: 1px solid rgba(201, 162, 39, 0.55);
+  text-shadow: 0 0 8px rgba(201, 162, 39, 0.35);
+}
+.pin-back,
+.pin-step {
+  cursor: pointer;
+  pointer-events: auto;
+}
+.pin-back {
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  padding: 6px 14px;
+}
+.pin-steps {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  display: flex;
+  gap: 6px;
+}
+.pin-step {
+  padding: 6px 12px;
+}
+.pin-count {
+  padding: 6px 12px;
+  min-width: 3.4em;
+  text-align: center;
+  cursor: default;
+}
+.pin-back:hover,
+.pin-step:hover {
+  background: rgba(40, 28, 12, 0.9);
+  border-color: rgba(224, 193, 106, 0.9);
+}
