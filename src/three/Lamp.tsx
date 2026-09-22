@@ -49,23 +49,59 @@ import { makeCanvas } from './textures'
 
 const WARM = '#ffb763'
 
-// arm joints in lamp-local space (x leans over the desk). ELBOW/HEAD are
-// also the anchors for the lights below, so they never move.
-const ELBOW: [number, number, number] = [0.089, 0.244, 0]
-const HEAD: [number, number, number] = [0.305, 0.205, 0]
+/* ---- the pose --------------------------------------------------------
+   How the lamp stands is these few numbers; the joints, neck, bulb and
+   both lights are derived from them, so the linkage is consistent by
+   construction. Lamp-local space: base at the origin, +x the way the arm
+   leans, +y up, z across the arm plane. Angles are degrees above the
+   horizontal unless said otherwise.
+
+   A working pose: the lower arm rises steeply, the upper arm reaches on
+   forward and a little up, and the head hangs from the end of it with
+   the shade looking down at the desk, not at the monitor or the wall. */
+const deg = (d: number): number => (d * Math.PI) / 180
+
+/** which way the arm reaches over the desk: degrees from the desk's +x
+    toward the front. Far enough round to clear the CRT's flank, and so
+    the head sits over the open desk between the lamp and the keyboard */
+const BEARING = 50
+const LOWER_LEN = 0.212
+const LOWER_ANG = deg(66)
+const UPPER_LEN = 0.2
+const UPPER_ANG = deg(18)
+/** the shade's axis off vertical: its opening looks (90 - 30) = 60 deg
+    below horizontal, forward and down onto the desk */
+const TILT = deg(30)
+/** shade apex (the swivel at the arm's end) to bulb centre */
+const NECK_DIST = 0.048
+
+/** three.js turns +x toward -z for a positive yaw */
+const YAW = -deg(BEARING)
 
 const J0 = new Vector3(0, 0.052, 0)
-const ELB = new Vector3(...ELBOW)
-/** the bulb sits just under HEAD, inside the shade */
-const BULB = new Vector3(HEAD[0], HEAD[1] - 0.02, 0)
-/** shade tipped toward the desk: local -y (the opening) → forward and down */
-const TILT = 0.96
-const NECK_DIST = 0.048
-const NECK = new Vector3(
-  BULB.x - NECK_DIST * Math.sin(TILT),
-  BULB.y + NECK_DIST * Math.cos(TILT),
+const ELB = new Vector3(
+  J0.x + LOWER_LEN * Math.cos(LOWER_ANG),
+  J0.y + LOWER_LEN * Math.sin(LOWER_ANG),
   0,
 )
+/** the swivel where the shade hangs from the end of the upper arm */
+const NECK = new Vector3(
+  ELB.x + UPPER_LEN * Math.cos(UPPER_ANG),
+  ELB.y + UPPER_LEN * Math.sin(UPPER_ANG),
+  0,
+)
+/** the way the shade opens: forward and down */
+const AXIS = new Vector3(Math.sin(TILT), -Math.cos(TILT), 0)
+/** the bulb sits just under the neck, inside the shade */
+const BULB = NECK.clone().addScaledVector(AXIS, NECK_DIST)
+/** where the shade's axis meets the desk: the middle of the pool */
+const POOL = new Vector3(BULB.x + BULB.y * Math.tan(TILT), 0, 0)
+
+/** Desk.tsx's lamp cord starts 0.0745 m from the base, heading this way
+    in world (x, z). The boot keeps that world heading whatever the yaw,
+    so the cord always meets it. */
+const CORD_HEADING = Math.PI + 0.4
+const BOOT_ANGLE = CORD_HEADING + YAW
 
 const ROD_OFFSET = 0.0125
 
@@ -194,7 +230,9 @@ function buildLamp(): LampGeo {
     ),
   )
 
-  // the cord leaves the back of the base through a moulded strain-relief boot
+  // the cord leaves the base through a moulded strain-relief boot, on
+  // the side of the base that faces the desk's grommet (BOOT_ANGLE keeps
+  // its tip where Desk.tsx's cord starts, whichever way the lamp is yawed)
   dark.push(
     at(
       lathe(
@@ -207,16 +245,19 @@ function buildLamp(): LampGeo {
           [0, 0.0132],
         ],
         { segments: 10, crease: 1.4 },
-      ).rotateZ(Math.PI / 2),
-      -0.0625,
+      )
+        .rotateZ(Math.PI / 2)
+        .rotateY(Math.PI - BOOT_ANGLE),
+      0.0625 * Math.cos(BOOT_ANGLE),
       0.0095,
-      0,
+      0.0625 * Math.sin(BOOT_ANGLE),
     ),
   )
 
   /* ---- parallelogram arms: two rods a link, a spring between ---- */
-  const link = (from: Vector3, to: Vector3, springTurns: number): void => {
+  const link = (from: Vector3, to: Vector3): void => {
     const d = new Vector3().subVectors(to, from)
+    const springTurns = Math.round(d.length() * 74)
     d.normalize()
     const n = new Vector3(-d.y, d.x, 0)
     for (const s of [-1, 1]) {
@@ -251,8 +292,8 @@ function buildLamp(): LampGeo {
       ),
     )
   }
-  link(J0, ELB, 15)
-  link(ELB, NECK, 14)
+  link(J0, ELB)
+  link(ELB, NECK)
 
   // pivots: dark hub between two brass knurled knobs
   for (const p of [J0, ELB, NECK]) {
@@ -411,7 +452,7 @@ export default function Lamp() {
 
   const target = useMemo(() => {
     const o = new Object3D()
-    o.position.set(0.62, 0, 0.12)
+    o.position.copy(POOL)
     return o
   }, [])
 
@@ -450,7 +491,7 @@ export default function Lamp() {
   })
 
   return (
-    <group position={[-0.55, DESK_TOP, -0.78]} rotation-y={-0.4}>
+    <group position={[-0.55, DESK_TOP, -0.78]} rotation-y={YAW}>
       <Clickable
         enabled={view === 'room'}
         label="mood lighting"
@@ -535,7 +576,7 @@ export default function Lamp() {
       <primitive object={target} />
       <spotLight
         ref={spot}
-        position={[HEAD[0], HEAD[1] - 0.02, HEAD[2]]}
+        position={BULB}
         target={target}
         color={WARM}
         intensity={3.2}
@@ -551,7 +592,7 @@ export default function Lamp() {
       />
       <pointLight
         ref={spill}
-        position={[HEAD[0], HEAD[1] + 0.05, HEAD[2]]}
+        position={[BULB.x, BULB.y + 0.07, BULB.z]}
         color={WARM}
         intensity={0.55}
         distance={2.4}
