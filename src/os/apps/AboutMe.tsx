@@ -176,7 +176,7 @@ export default function AboutMe({ windowId }: AppProps) {
             <dt>Registered to:</dt>
             <dd>{identity.name}</dd>
             <dt>Processor:</dt>
-            <dd>1 x human, caffeine-cooled</dd>
+            <dd>1 x insomniac, chai-cooled, no coffee</dd>
             <dt>Up-time:</dt>
             <dd className="t-term">{uptime}</dd>
           </dl>

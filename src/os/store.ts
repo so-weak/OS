@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { SCREEN_W, SCREEN_H } from '../constants'
 import { getApp } from './registry'
+import { useWorld } from '../world'
 
 /* =====================================================================
    System state machine
@@ -15,8 +16,14 @@ interface SystemState {
   power: PowerState
   view: ViewState
   muted: boolean
+  /** typing "hire" on the room keyboard booted the machine: the desktop
+      opens Contact instead of Welcome, then clears this */
+  hireBoot: boolean
   /** user clicked the monitor (or "power on") */
   powerOn: () => void
+  /** the "hire" path: power on and ask the desktop to open Contact */
+  powerOnForHire: () => void
+  clearHireBoot: () => void
   bootComplete: () => void
   /** start menu -> Shut Down. Plays CRT-off, then zooms out. */
   shutDown: () => void
@@ -30,12 +37,22 @@ interface SystemState {
 export const useSystem = create<SystemState>((set, get) => ({
   power: 'off',
   view: 'room',
-  muted: false,
+  muted: useWorld.getState().muted,
+  hireBoot: false,
 
   powerOn: () => {
     const { power } = get()
     set({ view: 'zooming-in', power: power === 'off' ? 'booting' : power })
   },
+  powerOnForHire: () => {
+    const { power } = get()
+    set({
+      view: 'zooming-in',
+      power: power === 'off' ? 'booting' : power,
+      hireBoot: true,
+    })
+  },
+  clearHireBoot: () => set({ hireBoot: false }),
   bootComplete: () => set({ power: 'desktop' }),
   shutDown: () => set({ power: 'shutting-down' }),
   shutdownComplete: () => {
@@ -52,7 +69,11 @@ export const useSystem = create<SystemState>((set, get) => ({
     if (v === 'zooming-in') set({ view: 'screen' })
     else if (v === 'zooming-out') set({ view: 'room' })
   },
-  toggleMuted: () => set((s) => ({ muted: !s.muted })),
+  toggleMuted: () =>
+    set((s) => {
+      useWorld.getState().setMuted(!s.muted)
+      return { muted: !s.muted }
+    }),
 }))
 
 /* =====================================================================

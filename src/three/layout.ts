@@ -23,7 +23,9 @@ export const MON_POS = new Vector3(0.02, DESK_TOP, -0.7)
 /** Slight turn toward the room camera (radians). */
 export const MON_YAW = 0.09
 /** CRT glass centre in monitor-local space. */
-export const GLASS_LOCAL = new Vector3(0, 0.26, 0.148)
+/* Recessed 13 mm behind the bezel face (R-P4): the OS sits inside the
+   chamfered frame like a real tube, and screenCamPose follows. */
+export const GLASS_LOCAL = new Vector3(0, 0.26, 0.128)
 /** Bezel front plate spans this local rect (used by Monitor.tsx). */
 export const BEZEL = {
   halfW: 0.22,
@@ -33,6 +35,8 @@ export const BEZEL = {
   depth: 0.026,
   holeW: 0.362,
   holeH: 0.274,
+  /** chamfer on the frame's edges — hole widens by this toward the face */
+  bevel: 0.006,
 } as const
 
 const monEuler = new Euler(0, MON_YAW, 0)
@@ -41,14 +45,46 @@ export const GLASS_WORLD_CENTER = GLASS_LOCAL.clone()
   .add(MON_POS)
 export const GLASS_WORLD_NORMAL = new Vector3(0, 0, 1).applyEuler(monEuler)
 
+/* ---------- the window opening in the back wall ----------
+   Shared by BackWall.tsx (cuts the hole), Window.tsx (frame, glass, sky
+   layers) and Room.tsx (things that must clear it). `wallZ` is the plane
+   of the back wall's room-side face; the sky layers sit BEHIND it (more
+   negative z).
+
+   The hole in the wall is frameW × frameH and `reveal` deep; the sash and
+   its glass (glassW × glassH, `glassDepth` behind the wall face) sit in
+   the outer part of that tunnel. A moulded casing stands `casingProud`
+   off the wall and reaches `casingW` beyond the hole on the top and both
+   sides, so the whole unit measures (frameW + 2·casingW) × (frameH +
+   casingW + apron) on the wall; the sill projects `sillOut` into the room
+   and runs `sillHorn` past the casing at each end. */
+export const WINDOW = {
+  x: -1.18,
+  y: 1.52,
+  wallZ: -1.08,
+  glassW: 0.62,
+  glassH: 0.82,
+  frameW: 0.72,
+  frameH: 0.92,
+  reveal: 0.14,
+  glassDepth: 0.098,
+  casingW: 0.065,
+  casingProud: 0.025,
+  sillOut: 0.085,
+  sillHorn: 0.03,
+} as const
+
 /* ---------- tower ---------- */
 export const TOWER_POS = new Vector3(0.98, 0.25, -0.64)
 export const TOWER_SIZE = { w: 0.22, h: 0.5, d: 0.48 } as const
 export const TOWER_YAW = -0.05
 
 /* ---------- camera ---------- */
-export const ROOM_CAM_POS = new Vector3(0.88, 1.24, 1.62)
-export const ROOM_CAM_TARGET = new Vector3(-0.04, 0.86, -0.55)
+/* pulled back and tilted down slightly from the original (0.88, 1.24,
+   1.62) -> (-0.04, 0.86, -0.55) so the wastebasket behind the chair and
+   the whole rug are back in frame */
+export const ROOM_CAM_POS = new Vector3(1.07, 1.43, 2.12)
+export const ROOM_CAM_TARGET = new Vector3(-0.1, 0.72, -0.5)
 /** Where the camera boots up on first load (dollies into ROOM_CAM_POS). */
 export const INTRO_CAM_POS = new Vector3(1.55, 1.72, 2.6)
 
@@ -117,10 +153,12 @@ export const CASE = {
   inner: 0.71,
 } as const
 
-/** Top surface of each book shelf (local y). Books stand on these. */
-export const SHELF_Y = [0.12, 0.46, 0.8, 1.14] as const
+/** Top surface of each book shelf (local y). Books stand on these.
+    Five shelves at 0.263 m: the real shelf is over a hundred books, and
+    the tallest spine (0.22 m, see bookDims) still clears the board above. */
+export const SHELF_Y = [0.12, 0.383, 0.646, 0.909, 1.172] as const
 /** Headroom above each shelf — the tallest volume must clear this. */
-export const SHELF_CLEAR = 0.31
+export const SHELF_CLEAR = 0.24
 
 /** Front plane of the carcass in local z. */
 export const CASE_FRONT = CASE.d / 2

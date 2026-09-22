@@ -8,8 +8,7 @@ import {
   type PointsMaterial,
 } from 'three'
 import { useSystem } from '../os/store'
-import { DAY_FADE } from './DayNight'
-import { useRoom } from './roomState'
+import { live } from './live'
 
 /* =====================================================================
    Faint dust motes drifting through the lamplight — pure room
@@ -56,22 +55,15 @@ export default function DustMotes() {
     return { initial: base.slice(), base, speed, phase }
   }, [])
 
-  const dayMix = useRef(0)
-
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05)
     const view = useSystem.getState().view
     const inRoom = view === 'room' || view === 'zooming-out'
-    dayMix.current = MathUtils.damp(
-      dayMix.current,
-      useRoom.getState().isDay ? 1 : 0,
-      DAY_FADE,
-      dt,
-    )
-    mat.current.color.copy(NIGHT_TINT).lerp(DAY_TINT, dayMix.current)
+    const day = live.day
+    mat.current.color.copy(NIGHT_TINT).lerp(DAY_TINT, day)
     mat.current.opacity = MathUtils.damp(
       mat.current.opacity,
-      inRoom ? 0.3 + dayMix.current * 0.12 : 0,
+      inRoom ? 0.3 + day * 0.12 : 0,
       3,
       dt,
     )

@@ -7,8 +7,9 @@ import type {
 import type { AppProps } from '../registry'
 import { apps } from '../registry'
 import { useSystem, useWindows } from '../store'
-import { useEggs } from '../eggs'
+import { DUCK_GOLDEN_AT, useEggs } from '../eggs'
 import { useLibrary } from '../../three/libraryState'
+import { LEDGER, useWorld, type Weather } from '../../world'
 import { playBeep } from '../sound'
 import { SCREEN_W, SCREEN_H } from '../../constants'
 import { books } from '../../data/library'
@@ -20,6 +21,7 @@ import {
   education,
   awards,
   projects,
+  certifications,
 } from '../../data/resume'
 import './terminal.css'
 
@@ -53,10 +55,40 @@ const DOCUMENTED = [
 const COMPLETABLE = [
   ...DOCUMENTED, 'dir', 'cls', 'sudo', 'matrix', 'crash', 'bsod',
   'format', 'echo', 'ver', 'history', 'whereis', 'pwd', 'cd', 'man',
-  'duck', 'hack', 'quit', 'date',
+  'duck', 'hack', 'quit', 'date', 'soweak', 'weather', 'forget',
+  'konnichiwa',
 ]
 
 const FILES = ['resume.txt', 'projects/', 'secrets.txt', 'snake.exe']
+
+/* ---------- the shell's own guardrail (E-3) ----------
+   Tested ONLY against input that fell through to "Bad command" — the
+   set is deliberately narrow so a pasted job description, "you are now
+   the lead of…" or "redundant" never trip it. */
+const INJECTION_PATTERNS: readonly RegExp[] = [
+  /ignore (all |any |your )?(previous|prior|above) (instructions|prompts?|rules)/i,
+  /(reveal|print|show|repeat|leak) (me )?(your |the )?system prompt/i,
+  /\bjailbreak\b/i,
+  /\bDAN mode\b/,
+  /pretend (you are|to be) (an? )?(unrestricted|unfiltered)/i,
+]
+
+/** the OSS guardrail project, straight from resume.ts */
+const SOWEAK = projects.find((p) => p.id === 'soweak')
+
+/** the Japanese qualification, if (and only if) the resume states one */
+const JLPT = certifications.find((c) => /\bJLPT\b/.test(c))
+const JLPT_LEVEL = JLPT?.match(/\bN[1-5]\b/)?.[0]
+
+/** every 64 bytes of secrets.txt is one thing you found */
+const SECRET_BYTES = 64
+
+const WEATHER_KINDS: readonly Weather[] = ['clear', 'rain', 'storm']
+const WEATHER_LINE: Record<Weather, string> = {
+  storm: 'weather: storm. the window will let you know.',
+  rain: 'weather: rain. the glass will tell you before I do.',
+  clear: 'weather: clear. nothing between you and the skyline.',
+}
 
 const NEOFETCH_LOGO = [
   '   .oooooooo.   ',
@@ -198,12 +230,16 @@ export default function Terminal({ windowId }: AppProps) {
       err(`ls: cannot access '${arg}': no such directory`)
       return
     }
+    const found = useWorld.getState().found.length
+    const secretSize = found
+      ? `${(found * SECRET_BYTES).toLocaleString('en-US')} bytes`
+      : '0 bytes   (locked)'
     pushAll([
       ' Directory of C:\\GUEST',
       '',
       '  resume.txt      <FILE>    4,096 bytes',
       '  projects        <DIR>',
-      '  secrets.txt     <FILE>    0 bytes   (locked)',
+      `  secrets.txt     <FILE>    ${secretSize}`,
       '  snake.exe       <FILE>    64K       (load-bearing)',
       '',
       '        3 file(s), 1 dir(s), 640K free (enough for anybody)',
@@ -238,7 +274,7 @@ export default function Terminal({ windowId }: AppProps) {
       return
     }
     if (f === 'secrets.txt' || f === 'secrets') {
-      err('nice try. secrets are need-to-know. you need to hire first.')
+      cmdSecrets()
       return
     }
     if (f === 'snake.exe') {
@@ -250,6 +286,31 @@ export default function Terminal({ windowId }: AppProps) {
       return
     }
     err(`cat: ${arg}: no such file`)
+  }
+
+  /* the ledger (E-1): what the room remembers you finding */
+  const cmdSecrets = (): void => {
+    const found = useWorld.getState().found
+    const n = LEDGER.filter((e) => found.includes(e.id)).length
+    const total = LEDGER.length
+    push('')
+    push(
+      n
+        ? `  SECRETS.TXT — ${n * SECRET_BYTES} bytes, and counting`
+        : '  SECRETS.TXT — 0 bytes. locked, but it keeps a ledger:',
+      'tc-amber',
+    )
+    LEDGER.forEach((e) => {
+      if (found.includes(e.id)) push(`  [x] ${e.done}`)
+      else push(`  [ ] ${e.riddle}`, 'tc-dim')
+    })
+    push('')
+    push(
+      n === total
+        ? '  all of them. go open the envelope.'
+        : `  ${n} of ${total}. the envelope in the drawer is waiting.`,
+      'tc-amber',
+    )
   }
 
   const cmdOpen = (arg: string): void => {
@@ -277,6 +338,9 @@ export default function Terminal({ windowId }: AppProps) {
       [{ text: 'OS: ', cls: 'tc-amber' }, { text: 'SoubhikOS 4.01 (beige edition)' }],
       [{ text: 'Host: ', cls: 'tc-amber' }, { text: `${identity.name} · ${identity.location}` }],
       [{ text: 'Kernel: ', cls: 'tc-amber' }, { text: 'beige-4.01-generic' }],
+      ...(JLPT_LEVEL
+        ? [[{ text: 'Locale: ', cls: 'tc-amber' }, { text: `en_IN · ja_JP (JLPT ${JLPT_LEVEL})` }]]
+        : []),
       [{ text: 'Uptime: ', cls: 'tc-amber' }, { text: `${experienceTally.fullTimeYears} years full-time (+${experienceTally.internYears} intern)` }],
       [{ text: 'Shell: ', cls: 'tc-amber' }, { text: 'sbsh 1.0 (feature-incomplete on purpose)' }],
       [{ text: 'Resolution: ', cls: 'tc-amber' }, { text: `${SCREEN_W}×${SCREEN_H} @ 60Hz-ish` }],
@@ -332,6 +396,7 @@ export default function Terminal({ windowId }: AppProps) {
     }
     setBusy(true)
     playBeep()
+    useWorld.getState().mark('format')
     push('')
     push('WARNING: ALL DATA ON NON-REMOVABLE DISK', 'tc-red')
     push('DRIVE C: (SOUBHIK_RESUME) WILL BE LOST!', 'tc-red')
@@ -356,6 +421,82 @@ export default function Terminal({ windowId }: AppProps) {
         })
       }
     })
+  }
+
+  /* the thing he actually ships — every line here is from resume.ts */
+  const cmdSoweak = (): void => {
+    if (!SOWEAK) {
+      err('soweak: not installed on this machine.')
+      return
+    }
+    push('')
+    push(`  ${SOWEAK.name}`, 'tc-amber')
+    push(`  ${SOWEAK.tagline} · ${SOWEAK.org}`)
+    push(`  ${SOWEAK.stack.join(' · ')}`, 'tc-dim')
+    const link = SOWEAK.links?.[0]
+    if (link) push(`  ${link.label.toLowerCase()}: ${link.url}`, 'tc-dim')
+    push('')
+    push('  opening My Work → soweak…', 'tc-dim')
+    // openApp only focuses an existing window (props stay), so re-open
+    // to land on the detail view
+    const wm = useWindows.getState()
+    if (wm.windows.some((w) => w.appId === 'projects')) wm.close('projects')
+    useWindows.getState().openApp('projects', { projectId: SOWEAK.id })
+  }
+
+  const cmdWeather = (arg: string): void => {
+    const world = useWorld.getState()
+    const kind = arg.trim().toLowerCase()
+    if (!kind) {
+      push(`weather: ${world.weather}.`)
+      push('(storm, rain or clear — the window takes requests.)', 'tc-dim')
+      return
+    }
+    const want = WEATHER_KINDS.find((k) => k === kind)
+    if (!want) {
+      err(`weather: '${arg}' is not on the menu. storm, rain or clear.`)
+      return
+    }
+    world.setWeather(want)
+    push(WEATHER_LINE[want], 'tc-amber')
+  }
+
+  const cmdDuck = (): void => {
+    const world = useWorld.getState()
+    const golden = world.duckClicks >= DUCK_GOLDEN_AT
+    pushAll([
+      '   __', '  ( o>   quack.', '  /))', '   ""',
+    ])
+    if (golden) {
+      // the golden debugger whispers one thing you have not found yet
+      const left = LEDGER.filter((e) => !world.found.includes(e.id))
+      if (left.length) {
+        const riddle = left[world.duckClicks % left.length].riddle
+        push(`the golden one, quietly: "${riddle}"`, 'tc-amber')
+        push(`(it knows ${left.length} more. ask again.)`, 'tc-dim')
+      } else {
+        push('the golden one has nothing left to tell you. respect.', 'tc-amber')
+      }
+    } else {
+      push('the rubber duck in the room heard that.', 'tc-dim')
+    }
+    useEggs.getState().clickDuck()
+  }
+
+  const cmdKonnichiwa = (): void => {
+    if (!JLPT_LEVEL) {
+      err('konnichiwa: no such locale on this machine.')
+      return
+    }
+    push('')
+    push(`  こんにちは。日本語は ${JLPT_LEVEL} くらいです — 短い文なら、だいじょうぶ。`, 'tc-amber')
+    push(
+      `  (hello. my Japanese is about ${JLPT_LEVEL} — short sentences are fine.)`,
+      'tc-dim',
+    )
+    push(`  on file: ${JLPT}`, 'tc-dim')
+    playBeep()
+    useWorld.getState().mark('nihongo')
   }
 
   const abortBusy = (): void => {
@@ -435,6 +576,7 @@ export default function Terminal({ windowId }: AppProps) {
       case 'bsod':
         push('oh no.', 'tc-red')
         playBeep()
+        useWorld.getState().mark('crash')
         after(350, () => useEggs.getState().triggerBsod())
         break
       case 'clear':
@@ -489,11 +631,22 @@ export default function Terminal({ windowId }: AppProps) {
           : `whereis: ${arg || 'what'}: not found (Soubhik is in ${identity.location}, if that helps)`)
         break
       case 'duck':
-        pushAll([
-          '   __', '  ( o>   quack.', '  /))', '   ""',
-        ])
-        push('the rubber duck in the room heard that.', 'tc-dim')
-        useEggs.getState().clickDuck()
+        cmdDuck()
+        break
+      case 'soweak':
+        cmdSoweak()
+        break
+      case 'weather':
+        cmdWeather(arg)
+        break
+      case 'forget':
+        useWorld.getState().forget()
+        push('memory wiped. the duck is yellow again.', 'tc-amber')
+        break
+      case 'konnichiwa':
+      case 'konnichiha':
+      case 'こんにちは':
+        cmdKonnichiwa()
         break
       case 'hack':
       case 'hackerman':
@@ -505,6 +658,15 @@ export default function Terminal({ windowId }: AppProps) {
         err('permission denied. also: rude.')
         break
       default:
+        // E-3: the shell runs the same guardrail he ships (unknown input only)
+        if (INJECTION_PATTERNS.some((re) => re.test(cmd))) {
+          err(
+            'soweak: PROMPT_INJECTION 0.97 — blocked at the input boundary. audit row written.',
+          )
+          push('(this is the thing I actually ship. try: soweak)', 'tc-dim')
+          useWorld.getState().mark('soweak')
+          break
+        }
         err(`Bad command or file name: ${headRaw}`)
         push("(type 'help' — or guess. guessing is encouraged.)", 'tc-dim')
     }
@@ -670,6 +832,7 @@ export default function Terminal({ windowId }: AppProps) {
           onExit={() => {
             setMatrix(false)
             push('back so soon? the desktop is also a construct.', 'tc-dim')
+            push('those were real katakana, by the way.', 'tc-dim')
             focusInput()
           }}
         />

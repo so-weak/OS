@@ -2,19 +2,37 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import {
   AdditiveBlending,
+  CanvasTexture,
   DoubleSide,
-  IcosahedronGeometry,
   MathUtils,
+  MeshStandardMaterial,
+  NoColorSpace,
+  RepeatWrapping,
+  SRGBColorSpace,
   Vector3,
   type BufferAttribute,
+  type BufferGeometry,
   type Group,
   type PointsMaterial,
 } from 'three'
 import { useSystem } from '../os/store'
 import { playBeep, playClick } from '../os/sound'
+import { useWorld } from '../world'
 import Clickable from './Clickable'
 import { DESK_TOP, P } from './layout'
-import { makeScoreboard, makeSoftCircle } from './textures'
+import {
+  makeCanvas,
+  makeScoreboard,
+  makeSoftCircle,
+  mulberry,
+} from './textures'
+import {
+  arc,
+  crumple as crumpleWad,
+  lathe,
+  mergeParts,
+  noise3,
+} from './tex/furniture'
 
 /* =====================================================================
    Wastepaper basketball. Three crumpled spec sheets sit on the desk;
@@ -88,17 +106,180 @@ function newGame(): Game {
   }
 }
 
-/** Deterministically crumple an icosahedron (StrictMode-stable). */
-function crumple(seed: number): IcosahedronGeometry {
-  const geo = new IcosahedronGeometry(0.017, 1)
-  const pos = geo.getAttribute('position')
-  for (let i = 0; i < pos.count; i++) {
-    const n = Math.sin(i * 91.7 + seed * 47.9) * 0.5 + 0.5
-    const s = 0.8 + n * 0.38
-    pos.setXYZ(i, pos.getX(i) * s, pos.getY(i) * s, pos.getZ(i) * s)
+/* ---------- the bin: perforated powder-coated steel ---------- */
+
+/** wall radius at height y (the same taper as ever: 8.2 cm foot, 10.5 cm lip) */
+const rWall = (y: number): number =>
+  0.082 + ((y - 0.004) / BIN_H) * (BIN_R - 0.082)
+
+interface BinGeo {
+  perf: BufferGeometry
+  solid: BufferGeometry
+  liner: BufferGeometry
+}
+
+function buildBin(): BinGeo {
+  const top = BIN_H + 0.004
+  /* perforated middle: metric UVs, an integral number of tiles round */
+  const wall: [number, number][] = []
+  for (let i = 0; i <= 4; i++) {
+    const y = 0.04 + (0.2 * i) / 4
+    wall.push([rWall(y), y])
   }
-  geo.computeVertexNormals()
-  return geo
+  const circ = 2 * Math.PI * rWall(0.24)
+  const perf = lathe(wall, {
+    segments: 48,
+    crease: 3,
+    uTile: circ / 12,
+    vTile: 0.0516,
+  })
+
+  const solid: BufferGeometry[] = []
+  // rolled lip: a bead over the top edge, then a short solid band under it
+  const bead = 0.0055
+  solid.push(
+    lathe(
+      [
+        [rWall(0.238), 0.238],
+        [rWall(top - bead), top - bead],
+        ...arc(BIN_R - bead, top - bead, bead, 0, Math.PI, 6).slice(1),
+        [BIN_R - 2 * bead, top - bead],
+        [rWall(0.238) - 0.0018, 0.238],
+      ],
+      { segments: 40, crease: 1.6, vTile: 0.06, uTile: 0.06 },
+    ),
+  )
+  // foot: a thick rolled base ring and a solid lower band
+  solid.push(
+    lathe(
+      [
+        [0.079, 0.0],
+        [0.0845, 0.0],
+        [0.0866, 0.0026],
+        [0.0866, 0.0072],
+        [0.0846, 0.0098],
+        [0.0828, 0.0125],
+        [rWall(0.04), 0.04],
+        [rWall(0.04) - 0.0018, 0.04],
+        [0.0812, 0.0125],
+        [0.0806, 0.011],
+      ],
+      { segments: 40, crease: 1.4, vTile: 0.06, uTile: 0.06 },
+    ),
+  )
+  // the floor of the bin, seen from above
+  solid.push(
+    lathe(
+      [
+        [0.0806, 0.011],
+        [0, 0.011],
+      ],
+      { segments: 40 },
+    ),
+  )
+  // two pressed ribs
+  for (const y of [0.09, 0.18]) {
+    solid.push(
+      lathe(arc(rWall(y) - 0.0004, y, 0.0032, -Math.PI / 2, Math.PI / 2, 6), {
+        segments: 40,
+        crease: 3,
+      }),
+    )
+  }
+  const steel = mergeParts(solid)
+
+  /* the liner: a bin bag folded over the lip, hanging unevenly */
+  const cy = top - bead
+  const lp: [number, number][] = [
+    [rWall(0.235) - 0.006, 0.235],
+    [BIN_R - 2 * bead - 0.0012, top - bead - 0.01],
+    ...arc(BIN_R - bead, cy, bead + 0.0011, Math.PI, 0, 6).slice(0, -1),
+    [BIN_R + 0.0021, cy - 0.004],
+    [BIN_R + 0.004, cy - 0.022],
+    [BIN_R + 0.0036, cy - 0.04],
+  ]
+  const liner = lathe(lp, {
+    segments: 40,
+    crease: 1.4,
+    vTile: 0.06,
+    uTile: 0.06,
+  })
+  const pos = liner.getAttribute('position')
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i)
+    const z = pos.getZ(i)
+    const y = pos.getY(i)
+    if (y > cy - 0.006) continue
+    const th = Math.atan2(z, x)
+    const n = noise3(Math.cos(th) * 2.2 + 4, Math.sin(th) * 2.2 + 4, 0.5, 9)
+    const k = (cy - 0.006 - y) / 0.034 // 0 at the fold, 1 at the loose hem
+    pos.setY(i, y + k * (n - 0.5) * 0.03)
+    const f = 1 + k * (n - 0.5) * 0.05
+    pos.setX(i, x * f)
+    pos.setZ(i, z * f)
+  }
+  pos.needsUpdate = true
+  liner.computeBoundingSphere()
+  return { perf, solid: steel, liner }
+}
+
+/** round holes in staggered rows: white = metal, black = hole */
+function makePerforation(): CanvasTexture {
+  const S = 128
+  const ctx = makeCanvas(S, S)
+  ctx.fillStyle = '#fff'
+  ctx.fillRect(0, 0, S, S)
+  ctx.fillStyle = '#000'
+  for (let row = 0; row < 4; row++) {
+    const off = row % 2 === 0 ? 0 : 16
+    for (let col = -1; col <= 4; col++) {
+      ctx.beginPath()
+      ctx.arc(col * 32 + off + 16, row * 32 + 16, 9.5, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+  const t = new CanvasTexture(ctx.canvas)
+  t.colorSpace = NoColorSpace
+  t.wrapS = t.wrapT = RepeatWrapping
+  t.anisotropy = 4
+  return t
+}
+
+/** printer-paper white with pale blue rules and a blot or two of biro */
+function makePaper(): CanvasTexture {
+  const S = 128
+  const ctx = makeCanvas(S, S)
+  const rand = mulberry(5)
+  ctx.fillStyle = '#eeebe0'
+  ctx.fillRect(0, 0, S, S)
+  ctx.strokeStyle = 'rgba(70,110,180,0.32)'
+  ctx.lineWidth = 1
+  for (let y = 8; y < S; y += 9) {
+    ctx.beginPath()
+    ctx.moveTo(0, y)
+    ctx.lineTo(S, y)
+    ctx.stroke()
+  }
+  ctx.strokeStyle = 'rgba(200,60,60,0.3)'
+  ctx.beginPath()
+  ctx.moveTo(22, 0)
+  ctx.lineTo(22, S)
+  ctx.stroke()
+  ctx.strokeStyle = 'rgba(30,40,110,0.55)'
+  for (let i = 0; i < 5; i++) {
+    const x = 26 + rand() * 90
+    const y = 6 + rand() * 116
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+    for (let k = 0; k < 6; k++)
+      ctx.lineTo(x + k * 3 + rand() * 2, y + (rand() - 0.5) * 4)
+    ctx.stroke()
+  }
+  const t = new CanvasTexture(ctx.canvas)
+  t.colorSpace = SRGBColorSpace
+  t.wrapS = t.wrapT = RepeatWrapping
+  t.anisotropy = 4
+  return t
 }
 
 function quadBezier(
@@ -141,6 +322,7 @@ function tossBall(game: Game, i: number): void {
 
 /** Three in a row: arm the bin dance, the sparks and a beep fanfare. */
 function celebrate(game: Game, sparkAttr: BufferAttribute): void {
+  useWorld.getState().mark('streak3')
   game.dance = 1
   game.sparkLife = 1
   for (let i = 0; i < SPARKS; i++) {
@@ -170,8 +352,12 @@ function stepBall(
   const b = game.balls[i]
   switch (b.phase) {
     case 'idle': {
-      b.scale = MathUtils.damp(b.scale, 1, 10, dt)
-      m.scale.setScalar(Math.max(0.001, b.scale))
+      // once a ball has fully respawned there is nothing left to settle —
+      // stop re-damping and re-setting a scale that is already 1
+      if (Math.abs(b.scale - 1) > 1e-3) {
+        b.scale = MathUtils.damp(b.scale, 1, 10, dt)
+        m.scale.setScalar(Math.max(0.001, b.scale))
+      }
       return false
     }
     case 'fly': {
@@ -319,7 +505,30 @@ export default function TrashGame() {
   const sparkAttr = useRef<BufferAttribute>(null)
   const sparkMat = useRef<PointsMaterial>(null)
 
-  const geos = useMemo(() => [crumple(1), crumple(2), crumple(3)], [])
+  const geos = useMemo(
+    () => [
+      crumpleWad(1, 0.022, 2),
+      crumpleWad(2, 0.021, 2),
+      crumpleWad(3, 0.023, 2),
+    ],
+    [],
+  )
+  const bin = useMemo(() => buildBin(), [])
+  const perfTex = useMemo(() => makePerforation(), [])
+  const paperTex = useMemo(() => makePaper(), [])
+  /* the three crumpled balls are separately animated (each its own click
+     target and flight state) but look identical — one shared material
+     instead of one per ball; nothing here is ever mutated per-frame */
+  const ballMat = useMemo(
+    () =>
+      new MeshStandardMaterial({
+        vertexColors: true,
+        map: paperTex,
+        roughness: 0.92,
+      }),
+    [paperTex],
+  )
+  useEffect(() => () => ballMat.dispose(), [ballMat])
   const sparkTex = useMemo(() => makeSoftCircle(), [])
   const sparkInit = useMemo(() => new Float32Array(SPARKS * 3), [])
 
@@ -334,6 +543,14 @@ export default function TrashGame() {
       sparkTex.dispose()
     },
     [geos, sparkTex],
+  )
+  useEffect(
+    () => () => {
+      Object.values(bin).forEach((g) => g.dispose())
+      perfTex.dispose()
+      paperTex.dispose()
+    },
+    [bin, perfTex, paperTex],
   )
   useEffect(() => {
     return () => {
@@ -363,44 +580,41 @@ export default function TrashGame() {
           enabled={view === 'room'}
           label="regulation height"
           onActivate={() => {
-            if (game.current) game.current.dance = Math.max(game.current.dance, 0.45)
+            if (game.current)
+              game.current.dance = Math.max(game.current.dance, 0.45)
             playClick()
           }}
         >
-          <mesh position={[0, BIN_H / 2 + 0.004, 0]} castShadow>
-            <cylinderGeometry args={[BIN_R, 0.082, BIN_H, 14, 1, true]} />
+          {/* perforated steel wall: real see-through holes */}
+          <mesh geometry={bin.perf} castShadow receiveShadow matrixAutoUpdate={false}>
             <meshStandardMaterial
-              color="#2e3238"
-              metalness={0.55}
+              color="#2d3239"
+              metalness={0.6}
               roughness={0.5}
+              alphaMap={perfTex}
+              alphaTest={0.5}
+              alphaToCoverage
               side={DoubleSide}
             />
           </mesh>
-          <mesh position={[0, 0.005, 0]} rotation-x={-Math.PI / 2}>
-            <circleGeometry args={[0.082, 14]} />
-            <meshStandardMaterial color="#1b1e22" roughness={0.8} />
-          </mesh>
-          <mesh position={[0, BIN_H + 0.004, 0]} rotation-x={Math.PI / 2}>
-            <torusGeometry args={[BIN_R, 0.005, 8, 18]} />
+          {/* rolled lip, base ring, floor and pressed ribs */}
+          <mesh geometry={bin.solid} castShadow receiveShadow matrixAutoUpdate={false}>
             <meshStandardMaterial
-              color="#41464e"
-              metalness={0.6}
-              roughness={0.4}
+              color="#3a4048"
+              metalness={0.65}
+              roughness={0.42}
+              side={DoubleSide}
             />
           </mesh>
-          {/* pressed ridges */}
-          {[0.09, 0.18].map((y) => (
-            <mesh key={y} position={[0, y, 0]} rotation-x={Math.PI / 2}>
-              <torusGeometry
-                args={[0.082 + (y / BIN_H) * (BIN_R - 0.082), 0.0022, 6, 18]}
-              />
-              <meshStandardMaterial
-                color="#23262b"
-                metalness={0.5}
-                roughness={0.55}
-              />
-            </mesh>
-          ))}
+          {/* the bin bag, folded over the lip */}
+          <mesh geometry={bin.liner} receiveShadow matrixAutoUpdate={false}>
+            <meshStandardMaterial
+              color="#7a808a"
+              roughness={0.34}
+              metalness={0}
+              side={DoubleSide}
+            />
+          </mesh>
           {/* scoreboard riveted to the front (tilted to hug the taper) */}
           <mesh position={[0.002, 0.165, 0.0975]} rotation-x={0.085}>
             <planeGeometry args={[0.105, 0.059]} />
@@ -425,9 +639,12 @@ export default function TrashGame() {
             }}
             position={s}
           >
-            <mesh geometry={geos[i]} castShadow>
-              <meshStandardMaterial color="#e6e2d4" roughness={0.95} />
-            </mesh>
+            <mesh
+              geometry={geos[i]}
+              material={ballMat}
+              castShadow
+              matrixAutoUpdate={false}
+            />
           </group>
         </Clickable>
       ))}

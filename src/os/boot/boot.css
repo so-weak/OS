@@ -237,6 +237,19 @@
   color: var(--shutdown-orange);
   text-shadow: 0 0 14px color-mix(in srgb, var(--shutdown-orange) 42%, transparent);
 }
+/* the handshake: where to write, and a reason to come back */
+.shut-safe-sub {
+  margin-top: 18px;
+  font-size: 22px;
+  letter-spacing: 1px;
+  color: color-mix(in srgb, var(--shutdown-orange) 58%, transparent);
+}
+.shut-safe-bye {
+  margin-top: 30px;
+  font-size: 20px;
+  letter-spacing: 2px;
+  color: color-mix(in srgb, var(--face-light) 42%, transparent);
+}
 .shut-collapse {
   position: absolute;
   inset: 0;

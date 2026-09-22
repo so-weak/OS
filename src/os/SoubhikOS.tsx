@@ -1,6 +1,7 @@
 import { SCREEN_W, SCREEN_H } from '../constants'
 import { useSystem } from './store'
 import { useEggs } from './eggs'
+import { useWorld } from '../world'
 import BootSequence from './boot/BootSequence'
 import ShutdownSequence from './boot/ShutdownSequence'
 import CrtOverlay from './crt/CrtOverlay'
@@ -40,8 +41,20 @@ export default function SoubhikOS() {
   )
 }
 
-/** Powered-down glass: near-black with a faint reflection sheen. */
+/** Powered-down glass: near-black with a faint reflection sheen. Left
+    alone long enough (the world's idle flag), the phosphor remembers
+    what it used to say — on the tube itself, never floating over the
+    room. App.tsx keeps the promise: any key powers on while it shows. */
 function ScreenOff() {
   const powerOn = useSystem((s) => s.powerOn)
-  return <div className="screen-off" onClick={powerOn} />
+  const idle = useWorld((s) => s.idle)
+  return (
+    <div className="screen-off" onClick={powerOn}>
+      {idle ? (
+        <div className="screen-burn t-term" aria-hidden="true">
+          SoubhikOS · press any key
+        </div>
+      ) : null}
+    </div>
+  )
 }

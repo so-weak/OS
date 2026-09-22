@@ -58,6 +58,30 @@
     radial-gradient(140% 120% at 50% 55%, transparent 60%, rgba(0, 0, 0, 0.5)),
     var(--term-bg);
 }
+/* phosphor burn-in: VT323 at 2x the grid so it reads from across the
+   room; faint green, the ghost of the last thing the tube said */
+.screen-burn {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  text-align: center;
+  font-size: 32px;
+  letter-spacing: 3px;
+  color: color-mix(in srgb, var(--term-green) 26%, transparent);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--term-green) 18%, transparent);
+  animation: burn-in 3s ease-out both;
+  pointer-events: none;
+}
+@keyframes burn-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
 
 /* ---------------------------------------------------------------------
    Desktop
@@ -114,7 +138,7 @@
 
 .dicon {
   pointer-events: auto;
-  width: 96px; /* fits a ~10-char monospace label on one line */
+  width: 104px; /* a 10-char label at 16px Plex Mono is 96px — one line */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -132,7 +156,7 @@
 }
 
 .dicon-label {
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.25;
   text-align: center;
   width: 100%; /* stay inside the cell — never spill past the screen edge */
@@ -564,6 +588,33 @@
     transform: translate(-50%, 8px);
     opacity: 0;
   }
+}
+
+/* ---------------------------------------------------------------------
+   Screensaver (Screensaver.tsx) — above every window and dialog, below
+   the BSOD and the glass texture
+   --------------------------------------------------------------------- */
+.saver {
+  position: absolute;
+  inset: 0;
+  z-index: 7000;
+  background: var(--term-bg);
+  overflow: hidden;
+  cursor: none;
+}
+.saver-out {
+  opacity: 0;
+  transition: opacity 160ms linear;
+}
+.saver-logo {
+  position: absolute;
+  left: 0;
+  top: 0;
+  line-height: 0;
+  will-change: transform, filter;
+}
+.saver-toast {
+  z-index: 1;
 }
 
 /* ---------------------------------------------------------------------

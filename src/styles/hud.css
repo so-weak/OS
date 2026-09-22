@@ -23,6 +23,14 @@
     opacity: 1;
   }
 }
+/* the first eight seconds: the name, dim and still, before the hint */
+.hud-hint.hud-identity {
+  animation: none;
+  opacity: 0.62;
+  font-size: 20px;
+  letter-spacing: 2px;
+  text-shadow: none;
+}
 
 .hud-back {
   position: fixed;
@@ -43,7 +51,7 @@
   border-color: rgba(72, 218, 182, 0.8);
 }
 .hud-key {
-  font-size: 13px;
+  font-size: 16px;
   border: 1px solid rgba(207, 232, 223, 0.5);
   padding: 0 5px;
 }
@@ -114,17 +122,13 @@
   font-size: 18px;
   padding: 6px 14px;
 }
+/* a quiet bordered button, the twin of .lib-back: the brass plate on
+   the case is the real control, this is only the keyboard's way in */
 .lib-open {
   top: 18px;
   right: 18px;
   font-size: 18px;
-  letter-spacing: 1px;
-  padding: 8px 20px;
-  background: rgba(201, 162, 39, 0.92);
-  color: #1c1408;
-  border-color: rgba(255, 235, 170, 0.7);
-  text-shadow: none;
-  box-shadow: 0 0 24px rgba(201, 162, 39, 0.25);
+  padding: 6px 14px;
 }
 .lib-count {
   font-family: var(--font-label);
@@ -138,6 +142,17 @@
   border-color: rgba(224, 193, 106, 0.9);
 }
 .lib-open:hover {
-  background: rgb(224, 193, 106);
-  border-color: #fff6e0;
+  background: rgba(40, 28, 12, 0.9);
+  border-color: rgba(224, 193, 106, 0.9);
+}
+
+/* ---------- motion hygiene ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .hud-hint {
+    animation: none;
+    opacity: 0.85;
+  }
+  .loader-fill {
+    animation: none;
+  }
 }

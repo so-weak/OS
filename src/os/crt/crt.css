@@ -1,6 +1,6 @@
 /* =====================================================================
    CRT overlay — pointer-events-none stack above the whole OS.
-   Deliberately faint: at 1024x768 with 13-14px UI text every layer is
+   Deliberately faint: at 1024x768 with 16px UI text every layer is
    tuned to add texture without hurting legibility. Colors via tokens
    only (mixed to low alpha with color-mix).
    ===================================================================== */
@@ -113,4 +113,16 @@
     color-mix(in srgb, var(--term-bg) 68%, transparent) 100%
   );
   box-shadow: inset 0 0 58px color-mix(in srgb, var(--term-green) 9%, transparent);
+}
+
+/* ---------- motion hygiene: no flicker, no rolling band ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .crt-flicker {
+    animation: none;
+    opacity: 0.018;
+  }
+  .crt-overlay > .crt-roll {
+    animation: none;
+    display: none;
+  }
 }

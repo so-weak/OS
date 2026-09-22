@@ -1,0 +1,120 @@
+/* =====================================================================
+   The pocket edition — a DOM page that replaces the room on phones and
+   WebGL refusals. Composes the win95.css kit + tokens.css only. Sizes
+   sit on the grid: Plex Mono 16/32, VT323 16, Silkscreen 8.
+   ===================================================================== */
+
+.pocket {
+  position: fixed;
+  inset: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px 40px;
+  background: radial-gradient(
+    130% 105% at 50% 38%,
+    var(--desktop) 52%,
+    var(--desktop-deep)
+  );
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+.pocket-card {
+  width: 100%;
+  max-width: 440px;
+  padding: 3px;
+  margin: auto 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* a window titlebar, because that is what this OS calls a heading */
+.pocket-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  background: linear-gradient(90deg, var(--title-a), var(--title-b));
+  color: var(--face-lighter);
+  font-weight: bold;
+  line-height: 1.25;
+}
+.pocket-title-ver {
+  margin-left: auto;
+  color: var(--amber);
+}
+
+.pocket-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 12px 10px;
+}
+.pocket-lead {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.pocket-id {
+  padding: 12px 14px;
+}
+.pocket-name {
+  font-size: 32px;
+  line-height: 1.15;
+  font-weight: bold;
+  letter-spacing: -0.5px;
+}
+.pocket-role {
+  margin-top: 6px;
+}
+.pocket-where {
+  margin-top: 4px;
+  font-size: 16px;
+  color: var(--ink-soft);
+}
+
+.pocket-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pocket-actions .btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  text-decoration: none;
+  text-align: left;
+}
+.pocket-actions .btn:active {
+  padding: 9px 13px 7px 15px;
+}
+
+.pocket-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 4px 12px 8px;
+}
+.pocket-fine {
+  font-size: 16px;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+.pocket-anyway {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 16px;
+  color: var(--title-a);
+  text-decoration: underline;
+  cursor: pointer;
+}

@@ -8,6 +8,7 @@ import Clickable from './Clickable'
 import { CASE, CASE_FRONT } from './layout'
 import { useLibrary } from './libraryState'
 import { makePlacard, makeStrip } from './libraryTextures'
+import { rb } from './rbox'
 
 /* =====================================================================
    What the case wears: the engraved placard on the cornice, the brass
@@ -61,7 +62,10 @@ function CataloguePlate({ enabled }: { enabled: boolean }) {
   useFrame((_, delta) => {
     const m = mat.current
     if (!m) return
-    glow.current = MathUtils.damp(glow.current, enabled ? 0.45 : 0.1, 4, Math.min(delta, 0.05))
+    const want = enabled ? 0.45 : 0.1
+    if (glow.current === want) return
+    glow.current = MathUtils.damp(glow.current, want, 4, Math.min(delta, 0.05))
+    if (Math.abs(glow.current - want) < 0.002) glow.current = want
     m.emissiveIntensity = glow.current
   })
 
@@ -78,7 +82,7 @@ function CataloguePlate({ enabled }: { enabled: boolean }) {
       >
         {/* the plate itself, screwed to the rail */}
         <mesh castShadow>
-          <boxGeometry args={[w, w / strip.aspect, 0.01]} />
+          <roundedBoxGeometry args={rb(w, w / strip.aspect, 0.01)} />
           <meshStandardMaterial
             ref={mat}
             map={strip.tex}
@@ -91,7 +95,7 @@ function CataloguePlate({ enabled }: { enabled: boolean }) {
         </mesh>
         {/* a hit box with some depth, so the plate is easy to grab */}
         <mesh position={[0, 0, 0.02]}>
-          <boxGeometry args={[w + 0.04, 0.09, 0.04]} />
+          <roundedBoxGeometry args={rb(w + 0.04, 0.09, 0.04)} />
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
       </Clickable>
@@ -112,8 +116,14 @@ function PictureLight({ open }: { open: boolean }) {
   useFrame((_, delta) => {
     const s = spot.current
     if (!s) return
+    // NB: deliberately not gating `visible` — see Bookcase.tsx's
+    // CornerFill comment: toggling a light's visibility changes the
+    // scene's active light count and forces a scene-wide shader
+    // recompile (measured). Early-out once settled is the safe win.
     const want = on ? (open ? 2.4 : 0.5) : 0
+    if (s.intensity === want) return
     s.intensity = MathUtils.damp(s.intensity, want, 3.5, Math.min(delta, 0.05))
+    if (Math.abs(s.intensity - want) < 0.01) s.intensity = want
   })
 
   return (
@@ -131,7 +141,7 @@ function PictureLight({ open }: { open: boolean }) {
           <meshStandardMaterial color="#c9a227" metalness={0.75} roughness={0.35} />
         </mesh>
         <mesh position={[0, 0.012, 0.028]} rotation={[Math.PI, 0, Math.PI / 2]}>
-          <cylinderGeometry args={[0.028, 0.028, 0.3, 14, 1, true, 0, Math.PI]} />
+          <cylinderGeometry args={[0.028, 0.028, 0.3, 10, 1, true, 0, Math.PI]} />
           <meshStandardMaterial color="#2f4f3a" metalness={0.4} roughness={0.5} side={2} />
         </mesh>
       </Clickable>

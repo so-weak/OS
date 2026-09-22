@@ -6,17 +6,22 @@ import {
   type ReactElement,
 } from 'react'
 import { useSystem } from '../store'
-import { SCREEN_W, SCREEN_H } from '../../constants'
 import { identity, projects, skills, awards } from '../../data/resume'
+import { RETURNING, useWorld } from '../../world'
 import { playBeep, playStartup } from '../sound'
 import { PixelMark, PixelText } from './pixelart'
 import './boot.css'
 
 /* =====================================================================
-   Act 1 — BIOS POST  (~3.8s): memory count-up, device detection gags.
-   Act 2 — SoubhikOS splash (~2.7s): pixel wordmark + segmented bar.
-   Any click / key skips everything. bootComplete() fires exactly once
-   (StrictMode-safe via refs); playStartup() rings as the desktop lands.
+   Act 1 — BIOS POST  (~3.2s): memory count-up, the operator line, the
+   device detection gags. Act 2 — SoubhikOS splash (~1.8s): pixel
+   wordmark + segmented bar. Any click / key skips everything.
+   bootComplete() fires exactly once (StrictMode-safe via refs);
+   playStartup() rings as the desktop lands.
+
+   The second boot in a session is a quick boot: memory OK, three
+   lines, a short splash. Across visits the POST is where recognition
+   lives ("Operator : visitor #3 … RECOGNISED"), so that stays full.
    ===================================================================== */
 
 const MEM_TOTAL = 65536
@@ -24,9 +29,18 @@ const MEM_START = 200
 const MEM_DUR = 1000
 const GAG_640K_AT = MEM_START + MEM_DUR + 220
 const LINES_START = GAG_640K_AT + 280
-const LINE_STEP = 185
+const LINE_STEP = 130
 const SPLASH_HOLD = 420
-const SPLASH_DUR = 2700
+const SPLASH_DUR = 1800
+
+/* quick boot (same session, second power-on) */
+const QUICK_MEM_DUR = 500
+const QUICK_LINES_START = MEM_START + QUICK_MEM_DUR + 160
+const QUICK_SPLASH_HOLD = 300
+const QUICK_SPLASH_DUR = 1100
+
+/** session-scoped: has this tab booted once already? */
+let bootedOnce = false
 
 interface PostLine {
   key: string
@@ -42,27 +56,59 @@ const silverStar =
   awards.find((a) => a.title.includes('Silver Star'))?.title.split(' — ')[0] ??
   'Silver Star Award'
 
+/* lead with the human, then the hardware */
+const OPERATOR_LINE: PostLine = {
+  key: 'operator',
+  text: `Operator : ${identity.name} — ${identity.title}`,
+  status: 'PRESENT',
+  tone: 'ok',
+}
+const HIRE_LINE: PostLine = {
+  key: 'hire',
+  text: 'HIRE.SIG received on the keyboard',
+  status: 'ACKNOWLEDGED',
+  tone: 'ok',
+}
+
 const DEVICE_LINES: PostLine[] = [
   { key: 'cpu', text: 'Main Processor : SOUBHIK-486DX4 @ 99 MHz', status: 'OK', tone: 'ok' },
   { key: 'hdd', text: 'Primary Master : GHOSH-HDD 8455 MB', status: 'OK', tone: 'ok' },
-  { key: 'vga', text: `Video : CRT-9000 SVGA, ${SCREEN_W}x${SCREEN_H} @ 60 Hz`, status: 'OK', tone: 'ok' },
   { key: 'gpu', text: 'Detecting GPUs for PyTorch', status: 'FOUND', tone: 'ok' },
   { key: 'llm', text: 'LLM co-processor (Gemini / Vertex AI)', status: 'READY', tone: 'ok' },
   { key: 'skills', text: `Skill modules : ${skillCount} packages`, status: 'LOADED', tone: 'ok' },
   { key: 'projects', text: `Portfolio volumes : ${projects.length} projects`, status: 'MOUNTED', tone: 'ok' },
   { key: 'board', text: `Board-presentation module (${silverStar})`, status: 'LOADED', tone: 'ok' },
   { key: 'liveness', text: 'Anti-spoofing liveness probe', status: 'HUMAN', tone: 'ok' },
-  { key: 'caffeine', text: 'Caffeine controller', status: 'CRITICAL', tone: 'warn', note: '(operating normally)' },
+  { key: 'caffeine', text: 'Caffeine controller', status: 'OFFLINE', tone: 'warn', note: '(insomniac: chai only)' },
 ]
+
+/** the quick boot keeps the operator, the resume, and the chai joke */
+const QUICK_KEYS = ['projects', 'caffeine']
+
+/** The POST, decided at power-on: who is here, whether they have been
+    here before, whether they typed "hire" on the real keyboard. */
+function postLines(quick: boolean): PostLine[] {
+  const head: PostLine[] = [OPERATOR_LINE]
+  if (RETURNING && !quick) {
+    head.push({
+      key: 'visitor',
+      text: `Operator : visitor #${useWorld.getState().visits}`,
+      status: 'RECOGNISED',
+      tone: 'ok',
+    })
+  }
+  if (useSystem.getState().hireBoot) head.push(HIRE_LINE)
+  const tail = quick
+    ? DEVICE_LINES.filter((l) => QUICK_KEYS.includes(l.key))
+    : DEVICE_LINES
+  return [...head, ...tail]
+}
 
 const SPLASH_STATUS: string[] = [
   'Loading window manager…',
   'Mounting resume.pdf…',
-  'Calibrating scanlines…',
   `Indexing ${projects.length} projects…`,
-  'Warming CRT phosphors…',
-  'Detuning startup chime…',
-  'Negotiating with caffeine controller…',
+  'Steeping the chai…',
 ]
 
 const BIOS_STAMP = `${new Date().toLocaleDateString('en-GB')} · SBIOS-4.01 · ${identity.name}`
@@ -78,6 +124,9 @@ export default function BootSequence(): ReactElement {
   const [lines, setLines] = useState<PostLine[]>([])
   const [phase, setPhase] = useState<'post' | 'splash'>('post')
   const [safeMode, setSafeMode] = useState(false)
+  // decided once per mount: the second boot of the session is quick
+  const [quick] = useState(() => bootedOnce)
+  const splashDur = quick ? QUICK_SPLASH_DUR : SPLASH_DUR
 
   // Refs survive StrictMode's double-effect pass — one-shots stay one-shot.
   const doneRef = useRef(false)
@@ -97,6 +146,7 @@ export default function BootSequence(): ReactElement {
   const finish = useCallback((): void => {
     if (doneRef.current) return
     doneRef.current = true
+    bootedOnce = true
     playStartup()
     useSystem.getState().bootComplete()
   }, [])
@@ -108,11 +158,12 @@ export default function BootSequence(): ReactElement {
       timers.push(window.setTimeout(fn, ms))
     }
 
+    const memDur = quick ? QUICK_MEM_DUR : MEM_DUR
     const t0 = performance.now()
     const memTimer = window.setInterval(() => {
       const el = performance.now() - t0 - MEM_START
       if (el <= 0) return
-      const frac = Math.min(1, el / MEM_DUR)
+      const frac = Math.min(1, el / memDur)
       setMem(Math.round((frac * MEM_TOTAL) / 512) * 512)
       if (frac >= 1) {
         window.clearInterval(memTimer)
@@ -123,26 +174,31 @@ export default function BootSequence(): ReactElement {
       }
     }, 34)
 
-    at(GAG_640K_AT, () =>
-      pushLine({
-        key: '640k',
-        text: '640K ought to be enough for anybody… upgrading anyway',
-        tone: 'dim',
-      }),
-    )
-    DEVICE_LINES.forEach((line, i) =>
-      at(LINES_START + i * LINE_STEP, () => pushLine(line)),
+    if (!quick) {
+      at(GAG_640K_AT, () =>
+        pushLine({
+          key: '640k',
+          text: '640K ought to be enough for anybody… upgrading anyway',
+          tone: 'dim',
+        }),
+      )
+    }
+    const lines = postLines(quick)
+    const linesStart = quick ? QUICK_LINES_START : LINES_START
+    lines.forEach((line, i) =>
+      at(linesStart + i * LINE_STEP, () => pushLine(line)),
     )
 
-    const splashAt = LINES_START + DEVICE_LINES.length * LINE_STEP + SPLASH_HOLD
+    const splashAt =
+      linesStart + lines.length * LINE_STEP + (quick ? QUICK_SPLASH_HOLD : SPLASH_HOLD)
     at(splashAt, () => setPhase('splash'))
-    at(splashAt + SPLASH_DUR, finish)
+    at(splashAt + splashDur, finish)
 
     return () => {
       timers.forEach((t) => window.clearTimeout(t))
       window.clearInterval(memTimer)
     }
-  }, [finish, pushLine])
+  }, [finish, pushLine, quick, splashDur])
 
   /* ---------- input: gags + skip ---------- */
   useEffect(() => {
@@ -240,14 +296,14 @@ export default function BootSequence(): ReactElement {
 
           <div className="post-foot">
             <div>
-              Press <span className="bs-warn">DEL</span> to enter SETUP · any
-              other key skips POST
+              any key skips · <span className="bs-warn">DEL</span> enters SETUP
+              <span className="bs-dim"> (it doesn&apos;t)</span>
             </div>
             <div className="bs-dim">{BIOS_STAMP}</div>
           </div>
         </div>
       ) : (
-        <Splash safeMode={safeMode} />
+        <Splash safeMode={safeMode} dur={splashDur} />
       )}
     </div>
   )
@@ -257,7 +313,13 @@ export default function BootSequence(): ReactElement {
 
 const SEGS = 20
 
-function Splash({ safeMode }: { safeMode: boolean }): ReactElement {
+function Splash({
+  safeMode,
+  dur,
+}: {
+  safeMode: boolean
+  dur: number
+}): ReactElement {
   const [elapsed, setElapsed] = useState(0)
 
   useEffect(() => {
@@ -269,7 +331,7 @@ function Splash({ safeMode }: { safeMode: boolean }): ReactElement {
     return () => window.clearInterval(iv)
   }, [])
 
-  const progress = Math.min(1, elapsed / (SPLASH_DUR - 300))
+  const progress = Math.min(1, elapsed / (dur - 300))
   const filled = Math.round(progress * SEGS)
   const status =
     SPLASH_STATUS[Math.floor(elapsed / 400) % SPLASH_STATUS.length]

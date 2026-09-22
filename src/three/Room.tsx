@@ -1,262 +1,323 @@
-import { useEffect, useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
-import {
-  BoxGeometry,
-  Color,
-  InstancedMesh,
-  MathUtils,
-  MeshStandardMaterial,
-  Object3D,
-  type CanvasTexture,
-  type Group,
-  type MeshBasicMaterial,
-  type PointLight,
-  type SpotLight,
-} from 'three'
+import { useEffect, useMemo } from 'react'
+import { useThree } from '@react-three/fiber'
+import { ContactShadows } from '@react-three/drei'
+import { AdditiveBlending, DoubleSide, MeshStandardMaterial, Vector2, type CanvasTexture } from 'three'
+import { awards, experience } from '../data/resume'
 import { useSystem } from '../os/store'
 import { playClick } from '../os/sound'
+import BackWall from './BackWall'
+import Chair from './Chair'
 import Clickable from './Clickable'
-import { DAY_FADE } from './DayNight'
 import { P } from './layout'
-import { useRoom } from './roomState'
 import {
-  makeDayWindow,
+  disposeSurface,
   makeFloppyPoster,
-  makeNightWindow,
+  makeLabel,
   makeRocketPoster,
-  makeWallNoise,
-  makeWood,
+  repeatSurface,
+  sharedWallShadowBlob,
 } from './textures'
+import { brushedMetalMaps, fabricMaps, plasticMaps, type PbrMaps } from './tex/noise'
+import {
+  FLOOR_TILE,
+  RUG,
+  SWITCH,
+  TROPHY,
+  bakeSideWall,
+  binderLabelsGeo,
+  bindersGeo,
+  bracketsGeo,
+  buildFringe,
+  buildShelfBooks,
+  corniceGeo,
+  floppyStackGeo,
+  makeBinderLabels,
+  makeFloorMaps,
+  makeFloorWear,
+  makeGlassSheen,
+  makeGrainMaps,
+  makeRugMaps,
+  makeWallGrime,
+  plasterSurface,
+  posterGeo,
+  rugGeo,
+  shelfBoardGeo,
+  skirtingGeo,
+  socketGeo,
+  switchGeo,
+  trophyGeo,
+} from './tex/room'
 
 /* =====================================================================
-   The dark cozy room: walls, floor, rug, night window, posters, shelf
-   with books, chair, baseboards, wall socket. Static decor only —
-   interactive props live in their own files.
+   The dark cozy room: plastered walls with moulded skirting and cornice,
+   varnished floorboards, a woven rug, framed prints behind glass, the
+   wall shelf, a socket and a light switch. Static decor only —
+   interactive props live in their own files, and the window (the room's
+   one scenery control) lives in Window.tsx.
+
+   Surfaces are generated once (seeded) in ./tex/room.ts and disposed
+   here. Three walls, three looks of ONE plaster: the back wall's
+   colour/normal/roughness go to BackWall.tsx (which owns its mesh and
+   the window cut) with its dirt and occlusion laid over it as a decal;
+   the side walls are mine, with a baked per-wall colour map.
    ===================================================================== */
 
+const WALL_Z = -1.08
+
 export default function Room() {
-  const floorTex = useMemo(() => {
-    const t = makeWood(P.floorWood, '#2c1d12', 3)
-    t.repeat.set(3, 2.6)
-    return t
-  }, [])
-  const wallTex = useMemo(() => {
-    const t = makeWallNoise(P.wallA)
-    t.repeat.set(4, 3)
-    return t
+  const gl = useThree((s) => s.gl)
+  const aniso = Math.min(8, gl.capabilities.getMaxAnisotropy())
+  const floor = useMemo(
+    () => repeatSurface(makeFloorMaps(P.floorWood, 5, aniso), 4.6 / FLOOR_TILE, 3.9 / FLOOR_TILE),
+    [aniso],
+  )
+  // one plaster for every wall: the back wall's own map is the tiled colour;
+  // the side walls swap in a baked map and keep the shared normal/roughness
+  const wall = useMemo(() => {
+    const s = plasterSurface(P.wallA, 11, 512, aniso)
+    // colour mottling: one tile per ~2 m so it never reads as a grid;
+    // the plaster's tooth is fine, one tile per ~0.55 m
+    s.map.repeat.set(2.2, 1.3)
+    for (const m of [s.bumpMap, s.roughnessMap, s.normalMap]) m?.repeat.set(8, 4.6)
+    return s
+  }, [aniso])
+  const sideL = useMemo(() => bakeSideWall('#272b35', 12, 'left', aniso), [aniso])
+  const sideR = useMemo(() => bakeSideWall('#282c36', 14, 'right', aniso), [aniso])
+  // soft decal overlays: low-frequency, blurred by design, so a smaller
+  // canvas costs nothing visible (was 1024x576 / 768x652)
+  const grime = useMemo(() => makeWallGrime(5, 640, 360, aniso), [aniso])
+  const wear = useMemo(() => makeFloorWear(8, 512, 435, aniso), [aniso])
+  const rug = useMemo(() => makeRugMaps(3, aniso), [aniso])
+  const rugMesh = useMemo(() => rugGeo(), [])
+  const fringe = useMemo(() => buildFringe(4), [])
+  const skirting = useMemo(() => skirtingGeo(), [])
+  const cornice = useMemo(() => corniceGeo(), [])
+  // one shared soft blob for every wall-hung drop shadow in the zone
+  // (Room + SetDressing) instead of five near-identical textures
+  const blob = useMemo(() => sharedWallShadowBlob(), [])
+  // one moulded-plastic grain for the socket and the switch; their UVs are
+  // in metres, so one 256 px tile ≈ 4 cm
+  const plastic = useMemo(() => {
+    const m = plasticMaps(17, 256, 1)
+    m.normalMap.repeat.set(24, 24)
+    m.roughnessMap.repeat.set(24, 24)
+    return m
   }, [])
 
   useEffect(
     () => () => {
-      floorTex.dispose()
-      wallTex.dispose()
+      disposeSurface(floor)
+      disposeSurface(wall)
+      sideL.dispose()
+      sideR.dispose()
+      grime.dispose()
+      wear.dispose()
+      rug.map.dispose()
+      rug.weave.dispose()
+      rugMesh.dispose()
+      fringe.geometry.dispose()
+      ;(fringe.material as { dispose(): void }).dispose()
+      fringe.dispose()
+      skirting.dispose()
+      cornice.dispose()
+      // blob is a shared, app-lifetime singleton (textures.ts) — not ours to dispose
+      plastic.dispose()
     },
-    [floorTex, wallTex],
+    [floor, wall, sideL, sideR, grime, wear, rug, rugMesh, fringe, skirting, cornice, plastic],
   )
 
   return (
     <group>
-      {/* floor */}
+      {/* floor: satin-varnished boards, gaps and all */}
+      <mesh rotation-x={-Math.PI / 2} position={[0.1, 0, 0.35]} receiveShadow>
+        <planeGeometry args={[4.6, 3.9]} />
+        <meshStandardMaterial
+          map={floor.map}
+          normalMap={floor.normalMap}
+          roughnessMap={floor.roughnessMap}
+          roughness={1}
+        />
+      </mesh>
+      {/* worn path, caster scuffs, dust along the wall */}
       <mesh
         rotation-x={-Math.PI / 2}
-        position={[0.1, 0, 0.35]}
-        receiveShadow
+        position={[0.1, 0.0012, 0.35]}
+        renderOrder={1}
       >
         <planeGeometry args={[4.6, 3.9]} />
-        <meshStandardMaterial map={floorTex} roughness={0.92} />
+        <meshStandardMaterial
+          map={wear}
+          transparent
+          depthWrite={false}
+          roughness={0.9}
+          polygonOffset
+          polygonOffsetFactor={-1}
+          polygonOffsetUnits={-1}
+        />
       </mesh>
+      {/* baked contact darkening under everything that stands on the
+          floor (chair, desk legs, tower, bin, bookcase). frames=1: one
+          bake at mount. Above the rug top (0.007); renderOrder -1 so it
+          can never land over the lifted paper (renderOrder 50). */}
+      <ContactShadows
+        frames={1}
+        position={[0.1, 0.008, 0.35]}
+        scale={[4.6, 3.9]}
+        resolution={1024}
+        blur={2.5}
+        far={0.6}
+        opacity={0.55}
+        renderOrder={-1}
+      />
 
-      {/* rug */}
-      <mesh rotation-x={-Math.PI / 2} position={[-0.42, 0.004, 0.28]}>
-        <circleGeometry args={[0.58, 32]} />
-        <meshStandardMaterial color="#1d3a38" roughness={1} />
-      </mesh>
-      <mesh rotation-x={-Math.PI / 2} position={[-0.42, 0.006, 0.28]}>
-        <circleGeometry args={[0.4, 32]} />
-        <meshStandardMaterial color="#16302e" roughness={1} />
-      </mesh>
+      {/* the rug: woven kilim, fringe, and a soft edge shadow on the boards */}
+      <group position={[RUG.x, 0, RUG.z]} rotation-y={RUG.yaw}>
+        <mesh
+          rotation-x={-Math.PI / 2}
+          position={[0, 0.0016, 0]}
+          renderOrder={2}
+        >
+          <planeGeometry args={[RUG.w + 0.1, RUG.d + 0.1]} />
+          <meshBasicMaterial
+            map={blob}
+            color="#000000"
+            transparent
+            opacity={0.55}
+            depthWrite={false}
+          />
+        </mesh>
+        <mesh geometry={rugMesh} receiveShadow>
+          <meshStandardMaterial
+            map={rug.map}
+            normalMap={rug.weave.normalMap}
+            normalScale={[1.4, 1.4]}
+            roughnessMap={rug.weave.roughnessMap}
+            roughness={1}
+          />
+        </mesh>
+        <primitive object={fringe} />
+      </group>
 
-      {/* back wall */}
-      <mesh position={[0.1, 1.3, -1.08]} receiveShadow>
+      {/* back wall (its own file: the window opening is cut there) */}
+      <BackWall surface={wall} />
+      {/* its dirt line, corner occlusion and scuffs, as a decal a half
+          millimetre proud (the window stays clear) */}
+      <mesh position={[0.1, 1.3, WALL_Z + 0.0005]} renderOrder={1}>
         <planeGeometry args={[4.6, 2.6]} />
-        <meshStandardMaterial map={wallTex} roughness={0.96} />
+        <meshBasicMaterial
+          map={grime}
+          transparent
+          depthWrite={false}
+          polygonOffset
+          polygonOffsetFactor={-2}
+          polygonOffsetUnits={-2}
+        />
       </mesh>
       {/* left wall */}
-      <mesh
-        position={[-2.05, 1.3, 0.35]}
-        rotation-y={Math.PI / 2}
-        receiveShadow
-      >
+      <mesh position={[-2.05, 1.3, 0.35]} rotation-y={Math.PI / 2} receiveShadow>
         <planeGeometry args={[3.9, 2.6]} />
-        <meshStandardMaterial color="#272b35" roughness={0.96} />
+        <meshStandardMaterial
+          map={sideL}
+          normalMap={wall.normalMap}
+          normalScale={[0.75, 0.75]}
+          roughnessMap={wall.roughnessMap}
+          roughness={1}
+        />
       </mesh>
       {/* right wall */}
-      <mesh
-        position={[2.25, 1.3, 0.35]}
-        rotation-y={-Math.PI / 2}
-        receiveShadow
-      >
+      <mesh position={[2.25, 1.3, 0.35]} rotation-y={-Math.PI / 2} receiveShadow>
         <planeGeometry args={[3.9, 2.6]} />
-        <meshStandardMaterial color="#272b35" roughness={0.96} />
+        <meshStandardMaterial
+          map={sideR}
+          normalMap={wall.normalMap}
+          normalScale={[0.75, 0.75]}
+          roughnessMap={wall.roughnessMap}
+          roughness={1}
+        />
       </mesh>
       {/* ceiling */}
       <mesh position={[0.1, 2.6, 0.35]} rotation-x={Math.PI / 2}>
         <planeGeometry args={[4.6, 3.9]} />
-        <meshStandardMaterial color="#181b22" roughness={1} />
+        <meshStandardMaterial
+          color="#181b22"
+          roughness={1}
+          normalMap={wall.normalMap}
+          normalScale={[0.6, 0.6]}
+          roughnessMap={wall.roughnessMap}
+        />
       </mesh>
 
-      {/* baseboard along back wall */}
-      <mesh position={[0.1, 0.045, -1.065]}>
-        <boxGeometry args={[4.6, 0.09, 0.02]} />
-        <meshStandardMaterial color="#201f24" roughness={0.85} />
+      {/* skirting along all three walls, true mitres in both corners */}
+      <mesh geometry={skirting} receiveShadow>
+        <meshStandardMaterial color="#4a4842" roughness={0.42} />
+      </mesh>
+      {/* cove cornice where the walls meet the ceiling */}
+      <mesh geometry={cornice} receiveShadow>
+        <meshStandardMaterial color="#3a3d46" roughness={0.6} />
       </mesh>
 
-      <RoomWindow />
-      <Poster kind="rocket" position={[-0.5, 1.5, -1.07]} w={0.32} h={0.42} tilt={-0.012} />
-      <Poster kind="floppy" position={[0.52, 1.56, -1.07]} w={0.24} h={0.32} tilt={0.02} />
-      <Shelf />
+      <Poster kind="rocket" position={[-0.47, 1.5, WALL_Z + 0.0005]} w={0.32} h={0.42} tilt={-0.012} blob={blob} />
+      <Poster kind="floppy" position={[0.52, 1.56, WALL_Z + 0.0005]} w={0.24} h={0.32} tilt={0.02} blob={blob} />
+      <Shelf blob={blob} />
       <Chair />
-      <WallSocket />
+      <WallSocket plastic={plastic} />
+      <LightSwitch plastic={plastic} />
     </group>
   )
 }
 
-/* ---------- the window: night by default, day on click ---------- */
-const MOON_SPILL = new Color('#7b93c9')
-const SUN_SPILL = new Color('#ffdfae')
-
-function RoomWindow() {
-  const view = useSystem((s) => s.view)
-  const isDay = useRoom((s) => s.isDay)
-  const toggleDay = useRoom((s) => s.toggleDay)
-
-  const nightTex = useMemo(() => makeNightWindow(), [])
-  const dayTex = useMemo(() => makeDayWindow(), [])
-  useEffect(
-    () => () => {
-      nightTex.dispose()
-      dayTex.dispose()
-    },
-    [nightTex, dayTex],
-  )
-
-  const dayMat = useRef<MeshBasicMaterial>(null!)
-  const spill = useRef<PointLight>(null!)
-  const sun = useRef<SpotLight>(null!)
-  const mix = useRef(0)
-
-  // the sun shaft leans down-right across the rug and desk
-  const sunTarget = useMemo(() => {
-    const o = new Object3D()
-    o.position.set(0.9, -1.35, 1.45)
-    return o
-  }, [])
-
-  useFrame((_, delta) => {
-    const dt = Math.min(delta, 0.05)
-    mix.current = MathUtils.damp(
-      mix.current,
-      useRoom.getState().isDay ? 1 : 0,
-      DAY_FADE,
-      dt,
-    )
-    const m = mix.current
-    dayMat.current.opacity = m
-    spill.current.color.copy(MOON_SPILL).lerp(SUN_SPILL, m)
-    spill.current.intensity = MathUtils.lerp(1.5, 2.6, m)
-    sun.current.intensity = m * 3.4
-  })
-
-  const x = -1.18
-  const y = 1.52
+/* ---------- a soft drop shadow on the wall behind wall-hung things ---------- */
+function WallShadow({
+  blob,
+  w,
+  h,
+  x = 0,
+  y = 0,
+  z = -0.0003,
+  opacity = 0.5,
+}: {
+  blob: CanvasTexture
+  w: number
+  h: number
+  x?: number
+  y?: number
+  z?: number
+  opacity?: number
+}) {
   return (
-    <group position={[x, y, -1.07]}>
-      <Clickable
-        enabled={view === 'room'}
-        label={isDay ? 'bring back the night' : 'let the sun in'}
-        onActivate={() => {
-          playClick()
-          toggleDay()
-        }}
-      >
-        {/* frame */}
-        <mesh castShadow>
-          <boxGeometry args={[0.72, 0.92, 0.045]} />
-          <meshStandardMaterial color="#1c1e22" roughness={0.8} />
-        </mesh>
-        {/* night sky (unlit so it reads as light) */}
-        <mesh position={[0, 0, 0.024]}>
-          <planeGeometry args={[0.62, 0.82]} />
-          <meshBasicMaterial map={nightTex} color="#b9c4de" toneMapped={false} />
-        </mesh>
-        {/* day sky cross-fades on top of it */}
-        <mesh position={[0, 0, 0.0255]}>
-          <planeGeometry args={[0.62, 0.82]} />
-          <meshBasicMaterial
-            ref={dayMat}
-            map={dayTex}
-            transparent
-            opacity={0}
-            toneMapped={false}
-          />
-        </mesh>
-        {/* cross mullions */}
-        <mesh position={[0, 0, 0.03]}>
-          <boxGeometry args={[0.62, 0.024, 0.012]} />
-          <meshStandardMaterial color="#1c1e22" roughness={0.8} />
-        </mesh>
-        <mesh position={[0, 0, 0.03]}>
-          <boxGeometry args={[0.024, 0.82, 0.012]} />
-          <meshStandardMaterial color="#1c1e22" roughness={0.8} />
-        </mesh>
-        {/* sill */}
-        <mesh position={[0, -0.48, 0.05]} castShadow>
-          <boxGeometry args={[0.78, 0.03, 0.09]} />
-          <meshStandardMaterial color="#26282e" roughness={0.85} />
-        </mesh>
-      </Clickable>
-      {/* moonlight / sunlight spilling in */}
-      <pointLight
-        ref={spill}
-        position={[0, 0.1, 0.35]}
-        color="#7b93c9"
-        intensity={1.5}
-        distance={4}
-        decay={2}
+    <mesh position={[x, y, z]} renderOrder={2}>
+      <planeGeometry args={[w, h]} />
+      <meshBasicMaterial
+        map={blob}
+        color="#000000"
+        transparent
+        opacity={opacity}
+        depthWrite={false}
       />
-      {/* daytime sun shaft (outside Clickable so raycasts stay cheap) */}
-      <primitive object={sunTarget} />
-      <spotLight
-        ref={sun}
-        position={[0.05, 0.15, 0.03]}
-        target={sunTarget}
-        color={SUN_SPILL}
-        intensity={0}
-        angle={0.62}
-        penumbra={0.7}
-        distance={6.5}
-        decay={1.1}
-        castShadow
-        shadow-mapSize={[512, 512]}
-        shadow-bias={-0.002}
-      />
-    </group>
+    </mesh>
   )
 }
 
-/* ---------- posters ---------- */
+/* ---------- framed prints ----------
+   A mitred moulding (black brushed metal / walnut), a bevel-cut mat, the
+   owner's pixel-art print (NEAREST-filtered, as drawn) and a pane of
+   glass. The glass is BLACK and additive: it adds only the specular
+   reflection of the lamp and the window, the way a pane over a dark
+   print does, and costs no transmission pass. */
 function Poster({
   kind,
   position,
   w,
   h,
   tilt = 0,
+  blob,
 }: {
   kind: 'rocket' | 'floppy'
   position: [number, number, number]
   w: number
   h: number
   tilt?: number
+  blob: CanvasTexture
 }) {
   const tex: CanvasTexture = useMemo(
     () => (kind === 'rocket' ? makeRocketPoster() : makeFloppyPoster()),
@@ -264,233 +325,341 @@ function Poster({
   )
   useEffect(() => () => tex.dispose(), [tex])
   return (
-    <group position={position} rotation-z={tilt}>
-      <mesh position={[0, 0, -0.004]}>
-        <boxGeometry args={[w + 0.02, h + 0.02, 0.012]} />
-        <meshStandardMaterial color="#141519" roughness={0.7} />
-      </mesh>
-      <mesh position={[0, 0, 0.004]}>
-        <planeGeometry args={[w, h]} />
-        <meshStandardMaterial
-          map={tex}
-          emissive="#ffffff"
-          emissiveMap={tex}
-          emissiveIntensity={0.14}
-          roughness={0.9}
+    <FramedPrint
+      tex={tex}
+      w={w}
+      h={h}
+      frame={kind === 'rocket' ? 'metal' : 'wood'}
+      matBorder={kind === 'rocket' ? 0.026 : 0.024}
+      position={position}
+      tilt={tilt}
+      blob={blob}
+      glow={0.14}
+    />
+  )
+}
+
+/* ---------- shared frame/mat/glass materials ----------
+   Every FramedPrint of a given frame kind renders identically (same
+   texture, same repeat, same PBR knobs) — the w/h/matBorder only affect
+   GEOMETRY. So the frame, matboard and glass are cached module-level
+   singletons instead of one fresh Material (and, for wood, one freshly
+   redrawn canvas texture) per poster. Never mutated per frame, so a
+   shared instance is safe. The glass used to be a MeshPhysicalMaterial
+   for its clearcoat layer; on a flat, additive-blended, already-glossy
+   (roughness 0.04) black pane the clearcoat's second specular lobe was
+   not visibly adding anything over the base specular + emissive sheen,
+   so it is a plain MeshStandardMaterial now — one less shader variant. */
+const frameMaterialCache = new Map<'metal' | 'wood', MeshStandardMaterial>()
+function getFrameMaterial(kind: 'metal' | 'wood'): MeshStandardMaterial {
+  const cached = frameMaterialCache.get(kind)
+  if (cached) return cached
+  let material: MeshStandardMaterial
+  if (kind === 'metal') {
+    const m = brushedMetalMaps(4, 256, 1)
+    m.normalMap.repeat.set(3, 4)
+    m.roughnessMap.repeat.set(3, 4)
+    material = new MeshStandardMaterial({
+      color: '#1a1b20',
+      metalness: 0.78,
+      roughness: 1,
+      normalMap: m.normalMap,
+      normalScale: new Vector2(0.3, 0.3),
+      roughnessMap: m.roughnessMap,
+    })
+  } else {
+    const m = makeGrainMaps('#6a4630', 5)
+    m.map.repeat.set(5, 24)
+    m.normalMap.repeat.set(5, 24)
+    m.roughnessMap.repeat.set(5, 24)
+    material = new MeshStandardMaterial({
+      color: '#ffffff',
+      map: m.map,
+      normalMap: m.normalMap,
+      roughnessMap: m.roughnessMap,
+      roughness: 1,
+    })
+  }
+  frameMaterialCache.set(kind, material)
+  return material
+}
+let matboardMaterial: MeshStandardMaterial | null = null
+function getMatboardMaterial(): MeshStandardMaterial {
+  if (!matboardMaterial) {
+    matboardMaterial = new MeshStandardMaterial({ color: '#c4beaf', roughness: 0.95, side: DoubleSide })
+  }
+  return matboardMaterial
+}
+let glassMaterial: MeshStandardMaterial | null = null
+function getGlassMaterial(): MeshStandardMaterial {
+  if (!glassMaterial) {
+    glassMaterial = new MeshStandardMaterial({
+      color: '#000000',
+      roughness: 0.04,
+      metalness: 0,
+      envMapIntensity: 2.2,
+      emissive: '#ffffff',
+      emissiveMap: makeGlassSheen(),
+      emissiveIntensity: 0.06,
+      transparent: true,
+      blending: AdditiveBlending,
+      depthWrite: false,
+    })
+  }
+  return glassMaterial
+}
+
+/** Any print, framed: reused by the set dressing. Group origin = the wall
+    plane at the frame's centre, facing +z (turn it with `rotationY`). */
+export function FramedPrint({
+  tex,
+  w,
+  h,
+  frame,
+  matBorder,
+  position,
+  rotationY = 0,
+  tilt = 0,
+  blob,
+  glow = 0,
+}: {
+  tex: CanvasTexture
+  w: number
+  h: number
+  frame: 'metal' | 'wood'
+  matBorder: number
+  position: [number, number, number]
+  rotationY?: number
+  tilt?: number
+  blob: CanvasTexture
+  /** how much the print glows on its own (pixel-art prints are lit; paper isn't) */
+  glow?: number
+}) {
+  const metal = frame === 'metal'
+  const g = useMemo(() => posterGeo(w, h, metal ? 'metal' : 'wood', matBorder), [w, h, metal, matBorder])
+  const frameMat = useMemo(() => getFrameMaterial(metal ? 'metal' : 'wood'), [metal])
+  useEffect(
+    () => () => {
+      g.frame.dispose()
+      g.mat.dispose()
+      // frameMat / matboard / glass materials are shared, app-lifetime
+      // singletons — not ours to dispose
+    },
+    [g],
+  )
+  return (
+    <group position={position} rotation-y={rotationY}>
+      <group rotation-z={tilt}>
+        <WallShadow
+          blob={blob}
+          w={g.outerW + 0.07}
+          h={g.outerH + 0.07}
+          x={0.006}
+          y={-0.01}
+          opacity={0.6}
         />
-      </mesh>
+        <mesh geometry={g.frame} material={frameMat} castShadow receiveShadow />
+        {/* mat with its bevel cut */}
+        <mesh geometry={g.mat} material={getMatboardMaterial()} receiveShadow />
+        {/* the print itself */}
+        <mesh position={[0, 0, g.z.print]}>
+          <planeGeometry args={[w, h]} />
+          <meshStandardMaterial
+            map={tex}
+            emissive="#ffffff"
+            emissiveMap={tex}
+            emissiveIntensity={glow}
+            roughness={0.85}
+          />
+        </mesh>
+        {/* glass */}
+        <mesh position={[0, 0, g.z.glass]} renderOrder={3} material={getGlassMaterial()}>
+          <planeGeometry args={[g.openW, g.openH]} />
+        </mesh>
+      </group>
     </group>
   )
 }
 
 /* ---------- shelf with books, binders and a tiny trophy ---------- */
-const BOOK_COLORS = [
-  '#7a3b2e',
-  '#31504a',
-  '#8a6d3b',
-  '#26364a',
-  '#5b3a56',
-  '#3d5a2e',
-  '#a0522d',
-  '#264a44',
-  '#6e4a24',
-  '#413a5e',
-]
 
-function Shelf() {
-  const books = useMemo(() => buildBooks(), [])
+/* the binders on the shelf are the three employers, straight from the
+   resume: "Fair Isaac Corporation (FICO)" → FICO, "PayU (Wibmo)" → PAYU,
+   "HDFC Bank" → HDFC. Oldest on the left, like a shelf fills up. */
+function employerSpine(company: string): string {
+  const acronym = /\(([A-Z]{2,})\)/.exec(company)
+  return (acronym ? acronym[1] : company.split(/\s+/)[0]).toUpperCase()
+}
+const BINDERS = [...experience]
+  .reverse()
+  .slice(0, 3)
+  .map((job) => employerSpine(job.company))
+const BINDER_COLORS = ['#3d5a2e', '#274a68', '#8c2f26']
+/* the trophy is the Quarterly Ace (PayU) — only engraved if it is real */
+const TROPHY_PLATE = awards.some((a) => /Quarterly Ace/i.test(a.title))
+  ? 'QUARTERLY ACE'
+  : 'AWARD'
+
+function Shelf({ blob }: { blob: CanvasTexture }) {
+  const view = useSystem((s) => s.view)
+  const board = useMemo(() => shelfBoardGeo(), [])
+  const brackets = useMemo(() => bracketsGeo([-0.26, 0.26]), [])
+  const books = useMemo(() => buildShelfBooks(), [])
+  const trophy = useMemo(() => trophyGeo(), [])
+  const floppies = useMemo(() => floppyStackGeo(), [])
+  const grain = useMemo(() => {
+    const m = makeGrainMaps(P.deskWood, 9)
+    m.map.repeat.set(4, 4)
+    m.normalMap.repeat.set(4, 4)
+    m.roughnessMap.repeat.set(4, 4)
+    return m
+  }, [])
+  const cloth = useMemo(() => fabricMaps(21, 128, 2, 10), [])
+  const binders = useMemo(() => bindersGeo(BINDER_COLORS), [])
+  const binderLabels = useMemo(() => binderLabelsGeo(BINDERS.length), [])
+  const labelAtlas = useMemo(() => makeBinderLabels(BINDERS), [])
+  const plateTex = useMemo(
+    () => makeLabel(TROPHY_PLATE, P.amber, '#1a1812', 4, 3),
+    [],
+  )
   useEffect(
     () => () => {
+      board.dispose()
+      brackets.dispose()
       books.geometry.dispose()
-      ;(books.material as MeshStandardMaterial).dispose()
+      books.atlas.dispose()
+      trophy.plinth.dispose()
+      trophy.gold.dispose()
+      floppies.dispose()
+      grain.dispose()
+      cloth.dispose()
+      binders.dispose()
+      binderLabels.dispose()
+      labelAtlas.dispose()
+      plateTex.dispose()
     },
-    [books],
+    [board, brackets, books, trophy, floppies, grain, cloth, binders, binderLabels, labelAtlas, plateTex],
   )
 
   return (
     <group position={[1.14, 1.52, -0.97]}>
-      {/* board */}
-      <mesh castShadow receiveShadow>
-        <boxGeometry args={[0.68, 0.026, 0.21]} />
-        <meshStandardMaterial color={P.deskWood} roughness={0.85} />
+      <WallShadow blob={blob} w={0.86} h={0.2} y={-0.075} z={-0.1088} opacity={0.55} />
+      {/* board: a bullnose front and soft ends, real grain */}
+      <mesh geometry={board} castShadow receiveShadow>
+        <meshStandardMaterial
+          map={grain.map}
+          normalMap={grain.normalMap}
+          roughnessMap={grain.roughnessMap}
+          roughness={1}
+        />
       </mesh>
-      {/* brackets */}
-      {[-0.26, 0.26].map((x) => (
-        <mesh key={x} position={[x, -0.05, -0.06]}>
-          <boxGeometry args={[0.02, 0.08, 0.08]} />
-          <meshStandardMaterial color={P.metal} roughness={0.6} metalness={0.4} />
-        </mesh>
-      ))}
-      <primitive object={books} position={[-0.31, 0.013, 0]} />
-      {/* two fat binders */}
-      <mesh position={[0.11, 0.098, -0.01]} rotation-y={0.04} castShadow>
-        <boxGeometry args={[0.052, 0.17, 0.15]} />
-        <meshStandardMaterial color="#8c2f26" roughness={0.85} />
+      {/* gallows brackets with wall plates and screws */}
+      <mesh geometry={brackets} castShadow>
+        <meshStandardMaterial vertexColors metalness={0.55} roughness={0.5} />
       </mesh>
-      <mesh position={[0.168, 0.098, 0]} castShadow>
-        <boxGeometry args={[0.052, 0.17, 0.15]} />
-        <meshStandardMaterial color="#274a68" roughness={0.85} />
+      {/* the books: one geometry, one atlas */}
+      <mesh geometry={books.geometry} position={[-0.31, 0.013, 0]} castShadow>
+        <meshStandardMaterial map={books.atlas} roughness={0.88} />
       </mesh>
-      {/* label strips on binder spines */}
-      {[0.11, 0.168].map((x) => (
-        <mesh key={x} position={[x, 0.12, 0.076]}>
-          <planeGeometry args={[0.032, 0.05]} />
-          <meshStandardMaterial color="#eceadf" roughness={0.9} />
-        </mesh>
-      ))}
-      {/* tiny amber trophy */}
-      <group position={[0.28, 0.013, 0.02]}>
-        <mesh castShadow>
-          <boxGeometry args={[0.045, 0.018, 0.045]} />
-          <meshStandardMaterial color="#2e2a26" roughness={0.6} />
-        </mesh>
-        <mesh position={[0, 0.028, 0]}>
-          <cylinderGeometry args={[0.006, 0.009, 0.03, 8]} />
-          <meshStandardMaterial
-            color={P.amber}
-            metalness={0.7}
-            roughness={0.35}
-          />
-        </mesh>
-        <mesh position={[0, 0.055, 0]}>
-          <sphereGeometry args={[0.016, 12, 10]} />
-          <meshStandardMaterial
-            color={P.amber}
-            metalness={0.7}
-            roughness={0.35}
-            emissive={P.amber}
-            emissiveIntensity={0.08}
-          />
-        </mesh>
-      </group>
-      {/* spare floppy stack */}
-      <group position={[-0.02, 0.02, 0.05]} rotation-y={-0.3}>
-        <mesh castShadow>
-          <boxGeometry args={[0.09, 0.007, 0.093]} />
-          <meshStandardMaterial color="#2b3a8c" roughness={0.8} />
-        </mesh>
-        <mesh position={[0.006, 0.008, -0.004]} rotation-y={0.18}>
-          <boxGeometry args={[0.09, 0.007, 0.093]} />
-          <meshStandardMaterial color="#3a3d42" roughness={0.8} />
-        </mesh>
-      </group>
-    </group>
-  )
-}
-
-function buildBooks(): InstancedMesh {
-  const geo = new BoxGeometry(1, 1, 1)
-  const mat = new MeshStandardMaterial({ roughness: 0.88 })
-  const mesh = new InstancedMesh(geo, mat, BOOK_COLORS.length)
-  const dummy = new Object3D()
-  const color = new Color()
-  let x = 0
-  BOOK_COLORS.forEach((c, i) => {
-    const w = 0.024 + ((i * 7) % 5) * 0.004
-    const h = 0.13 + ((i * 5) % 7) * 0.009
-    const d = 0.14 + ((i * 3) % 4) * 0.008
-    const lean = i === BOOK_COLORS.length - 1 ? 0.32 : 0
-    dummy.position.set(x + w / 2, h / 2 + (lean ? -0.012 : 0), 0)
-    dummy.rotation.set(0, 0, lean)
-    dummy.scale.set(w, h, d)
-    dummy.updateMatrix()
-    mesh.setMatrixAt(i, dummy.matrix)
-    mesh.setColorAt(i, color.set(c))
-    x += w + 0.003
-  })
-  mesh.instanceMatrix.needsUpdate = true
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
-  mesh.castShadow = true
-  return mesh
-}
-
-/* ---------- desk chair (invented egg: click it and it spins) ---------- */
-function Chair() {
-  const view = useSystem((s) => s.view)
-  const rig = useRef<Group>(null!)
-  const spin = useRef({ x: 0, v: 0, target: 0 })
-
-  useFrame((_, delta) => {
-    const dt = Math.min(delta, 0.05)
-    // underdamped swivel — overshoots, wobbles, settles
-    const sp = spin.current
-    sp.v += (26 * (sp.target - sp.x) - 4.2 * sp.v) * dt
-    sp.x += sp.v * dt
-    const g = rig.current
-    g.rotation.y = sp.x
-    // centrifugal lean while it whips around
-    g.rotation.z = MathUtils.clamp(sp.v * 0.01, -0.05, 0.05)
-  })
-
-  return (
-    /* Parked left of the paperwork on purpose: from the room camera the
-       chair back sits in the gap between the bookcase and the desk props
-       (paper stack, crumpled shots), so it occludes neither. */
-    <group position={[-0.58, 0, -0.02]} rotation-y={0.35}>
+      {/* three fat binders — one per employer (E-5) — as ONE mesh, their
+          spine labels as one more, and a spare floppy stack lying across
+          their tops */}
       <Clickable
         enabled={view === 'room'}
-        label="quality assurance seat"
-        onActivate={() => {
-          spin.current.target += Math.PI * 2 * (Math.random() < 0.3 ? -1 : 1)
-          playClick()
-        }}
+        label="three employers, one shelf"
+        onActivate={() => playClick()}
       >
-        <group ref={rig}>
-          {/* seat */}
-          <mesh position={[0, 0.47, 0]} castShadow>
-            <boxGeometry args={[0.42, 0.07, 0.4]} />
-            <meshStandardMaterial color="#3a3f47" roughness={0.9} />
-          </mesh>
-          {/* backrest */}
-          <mesh position={[0, 0.8, -0.2]} rotation-x={-0.14} castShadow>
-            <boxGeometry args={[0.4, 0.5, 0.06]} />
-            <meshStandardMaterial color="#3a3f47" roughness={0.9} />
-          </mesh>
-        </group>
+        <mesh geometry={binders} castShadow>
+          <meshStandardMaterial
+            vertexColors
+            roughness={1}
+            normalMap={cloth.normalMap}
+            normalScale={[0.45, 0.45]}
+            roughnessMap={cloth.roughnessMap}
+          />
+        </mesh>
+        <mesh geometry={binderLabels}>
+          <meshStandardMaterial map={labelAtlas} roughness={0.9} />
+        </mesh>
+        <mesh geometry={floppies} position={[0.148, 0.183, -0.005]} rotation-y={0.4} castShadow>
+          <meshStandardMaterial vertexColors roughness={0.55} />
+        </mesh>
       </Clickable>
-      {/* gas post */}
-      <mesh position={[0, 0.3, 0]}>
-        <cylinderGeometry args={[0.024, 0.03, 0.32, 10]} />
-        <meshStandardMaterial color={P.metal} metalness={0.5} roughness={0.5} />
-      </mesh>
-      {/* star base */}
-      {[0, 1, 2, 3, 4].map((i) => {
-        const a = (i / 5) * Math.PI * 2
-        return (
-          <group key={i} rotation-y={a}>
-            <mesh position={[0.14, 0.05, 0]} rotation-z={-0.18}>
-              <boxGeometry args={[0.26, 0.03, 0.04]} />
-              <meshStandardMaterial
-                color="#23262b"
-                metalness={0.4}
-                roughness={0.6}
-              />
-            </mesh>
-            <mesh position={[0.26, 0.025, 0]}>
-              <sphereGeometry args={[0.024, 10, 8]} />
-              <meshStandardMaterial color="#17181c" roughness={0.7} />
-            </mesh>
-          </group>
-        )
-      })}
+      {/* the amber trophy, engraved: turned cup on a stepped plinth */}
+      <group position={[0.285, 0.013, 0.02]} rotation-y={-0.2}>
+        <mesh geometry={trophy.plinth} castShadow>
+          <meshStandardMaterial color="#2e2a26" roughness={0.5} />
+        </mesh>
+        <mesh position={[0, TROPHY.plateY, TROPHY.plateZ]}>
+          <planeGeometry args={[TROPHY.plateW, TROPHY.plateH]} />
+          <meshStandardMaterial map={plateTex} metalness={0.6} roughness={0.4} />
+        </mesh>
+        <mesh geometry={trophy.gold} castShadow>
+          <meshStandardMaterial
+            color="#e6ad3a"
+            metalness={0.9}
+            roughness={0.26}
+            emissive={P.amber}
+            emissiveIntensity={0.05}
+          />
+        </mesh>
+      </group>
     </group>
   )
 }
 
 /* ---------- wall socket the machine plugs into ---------- */
-function WallSocket() {
+function WallSocket({ plastic }: { plastic: PbrMaps }) {
+  const geo = useMemo(() => socketGeo(), [])
+  useEffect(
+    () => () => {
+      geo.plate.dispose()
+      geo.dark.dispose()
+    },
+    [geo],
+  )
   return (
-    <group position={[0.72, 0.22, -1.066]}>
-      <mesh>
-        <boxGeometry args={[0.09, 0.13, 0.014]} />
-        <meshStandardMaterial color={P.chassisDark} roughness={0.85} />
+    <group position={[0.72, 0.22, WALL_Z + 0.0005]}>
+      <mesh geometry={geo.plate} castShadow receiveShadow>
+        <meshStandardMaterial
+          color="#b7b1a2"
+          roughness={1}
+          normalMap={plastic.normalMap}
+          normalScale={[0.18, 0.18]}
+          roughnessMap={plastic.roughnessMap}
+        />
       </mesh>
-      {[0.028, -0.028].map((y) => (
-        <mesh key={y} position={[0, y, 0.008]}>
-          <boxGeometry args={[0.05, 0.045, 0.006]} />
-          <meshStandardMaterial color={P.plasticDark} roughness={0.8} />
-        </mesh>
-      ))}
+      <mesh geometry={geo.dark}>
+        <meshStandardMaterial vertexColors roughness={0.7} />
+      </mesh>
+    </group>
+  )
+}
+
+/* ---------- a light switch by the corner ---------- */
+function LightSwitch({ plastic }: { plastic: PbrMaps }) {
+  const geo = useMemo(() => switchGeo(), [])
+  useEffect(
+    () => () => {
+      geo.plate.dispose()
+      geo.dark.dispose()
+    },
+    [geo],
+  )
+  return (
+    <group position={[SWITCH.x, SWITCH.y, WALL_Z + 0.0005]}>
+      <mesh geometry={geo.plate} castShadow receiveShadow>
+        <meshStandardMaterial
+          vertexColors
+          roughness={1}
+          normalMap={plastic.normalMap}
+          normalScale={[0.18, 0.18]}
+          roughnessMap={plastic.roughnessMap}
+        />
+      </mesh>
+      <mesh geometry={geo.dark}>
+        <meshStandardMaterial vertexColors roughness={0.7} />
+      </mesh>
     </group>
   )
 }

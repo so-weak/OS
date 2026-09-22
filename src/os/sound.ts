@@ -12,6 +12,9 @@ import { useSystem } from './store'
 let ctx: AudioContext | null = null
 let master: GainNode | null = null
 let unlockBound = false
+/** a gesture has happened: ambience layers (rainSound.ts) may start */
+let unlocked = false
+const unlockListeners = new Set<() => void>()
 
 function createContext(): void {
   if (ctx || typeof window === 'undefined') return
@@ -35,6 +38,14 @@ function bindUnlock(): void {
     if (ctx && ctx.state === 'suspended') {
       void ctx.resume().catch(() => undefined)
     }
+    unlocked = true
+    for (const fn of unlockListeners) {
+      try {
+        fn()
+      } catch {
+        /* a listener must never break the unlock */
+      }
+    }
   }
   window.addEventListener('pointerdown', unlock, { passive: true })
   window.addEventListener('keydown', unlock, { passive: true })
@@ -51,6 +62,22 @@ function out(): { ac: AudioContext; bus: GainNode } | null {
     return { ac: ctx, bus: master }
   } catch {
     return null
+  }
+}
+
+/** The same bus, named for ambience layers that live in their own file
+    (rainSound.ts): the one AudioContext, the one master gain. */
+export { out as audioBus }
+/** Has the visitor made a gesture yet? (browsers gate audio until then) */
+export function audioUnlocked(): boolean {
+  return unlocked
+}
+/** Called on every pointerdown/keydown after the context is created.
+    Returns the unsubscribe. */
+export function onAudioUnlock(fn: () => void): () => void {
+  unlockListeners.add(fn)
+  return () => {
+    unlockListeners.delete(fn)
   }
 }
 
@@ -237,6 +264,56 @@ export function playShutdown(): void {
     })
     // low sub swell under the final note
     tone(ac, lp, { type: 'sine', freq: 98.0, t0: t + 0.63, dur: 1.05, peak: 0.06, attack: 0.08 })
+  } catch {
+    /* stay silent */
+  }
+}
+
+/** Distant thunder, `delayMs` after the flash — the storm is a few km
+    off. Two seconds of low noise through a lowpass that sinks from
+    180 Hz to 60 Hz as the rumble rolls away. Peak gain 0.12 (agreed
+    cap). Silent until the first gesture: a suspended context would
+    queue every rumble and dump them all when it finally resumes. */
+export function playThunder(delayMs = 1500): void {
+  try {
+    if (throttled('thunder', 800)) return
+    const o = out()
+    if (!o) return
+    const { ac, bus } = o
+    if (ac.state !== 'running') return
+    const dur = 2
+    const t = ac.currentTime + Math.max(0, delayMs) / 1000
+
+    // brown-ish noise: a leaky integrator over white, so it rumbles
+    const buf = ac.createBuffer(1, Math.ceil(ac.sampleRate * dur), ac.sampleRate)
+    const d = buf.getChannelData(0)
+    let last = 0
+    for (let i = 0; i < d.length; i++) {
+      last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02
+      d[i] = last * 3.5
+    }
+    const src = ac.createBufferSource()
+    src.buffer = buf
+
+    const lp = ac.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.frequency.setValueAtTime(180, t)
+    lp.frequency.exponentialRampToValueAtTime(60, t + dur)
+    lp.Q.value = 0.9
+
+    // the crack, a second roll, then the long fade
+    const g = ac.createGain()
+    g.gain.setValueAtTime(0.0001, t)
+    g.gain.exponentialRampToValueAtTime(0.12, t + 0.12)
+    g.gain.exponentialRampToValueAtTime(0.045, t + 0.55)
+    g.gain.exponentialRampToValueAtTime(0.09, t + 0.8)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+
+    src.connect(lp)
+    lp.connect(g)
+    g.connect(bus)
+    src.start(t)
+    src.stop(t + dur + 0.05)
   } catch {
     /* stay silent */
   }

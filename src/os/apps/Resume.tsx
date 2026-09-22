@@ -1,47 +1,24 @@
-import { useState } from 'react'
 import { identity } from '../../data/resume'
 import { AppIcon } from '../icons/AppIcon'
-import { playClick } from '../sound'
 import { useToast } from './useToast'
+import resumePage1 from '../../assets/resume-pages/page-1.png'
+import resumePage2 from '../../assets/resume-pages/page-2.png'
 import './apps.css'
 
 /* =====================================================================
-   Resume.pdf — embedded PDF with a proper toolbar. If the browser (or
-   the 3D-transformed CRT) refuses to render the PDF, <object> falls back
-   to a clean pane with a big download button. Because a PDF can also
-   "load" yet paint garbage under a CSS 3D transform, the status bar
-   offers a manual eject to the same fallback pane.
+   Resume.pdf — the whole point of the portfolio, so it has to actually
+   show up. A live PDF plugin under this window's CSS 3D transform is
+   unreliable (it can "load" and still paint garbage on the CRT tube),
+   so the pages are pre-rendered to images at build time (see
+   src/assets/resume-pages/, sourced from public/SoubhikGhosh-Resume.pdf
+   via pdftoppm) and shown directly — the one thing that always renders.
+   Download/Print/Open-in-tab still hand over the real PDF underneath.
    ===================================================================== */
 
-function FallbackPane({ onOpenTab }: { onOpenTab: () => void }) {
-  return (
-    <div className="res-fallback">
-      <AppIcon name="pdf" size={48} />
-      <div className="res-fallback-title">
-        This CRT predates inline PDF viewers.
-      </div>
-      <div className="res-fallback-sub">
-        The built-in previewer couldn&apos;t render the document inside a
-        cathode-ray tube. The paper itself is fine — grab it below.
-      </div>
-      <a
-        className="btn primary"
-        href={identity.resumePdf}
-        download
-        style={{ textDecoration: 'none' }}
-      >
-        Download SoubhikGhosh-Resume.pdf
-      </a>
-      <button type="button" className="btn" onClick={onOpenTab}>
-        Open in new tab
-      </button>
-    </div>
-  )
-}
+const PAGES = [resumePage1, resumePage2]
 
 export default function Resume() {
   const { toast, show } = useToast()
-  const [ejected, setEjected] = useState(false)
 
   const openTab = () => {
     window.open(identity.resumePdf, '_blank', 'noopener')
@@ -71,41 +48,26 @@ export default function Resume() {
           Open in new tab
         </button>
         <span className="tool-spring" />
-        <span className="t-label t-soft">100% dpi-independent paper</span>
+        <span className="t-label t-soft">
+          {PAGES.length} page{PAGES.length === 1 ? '' : 's'}
+        </span>
       </div>
 
-      <div className="res-frame-wrap">
-        {ejected ? (
-          <FallbackPane onOpenTab={openTab} />
-        ) : (
-          <object
-            className="res-frame"
-            data={`${identity.resumePdf}#toolbar=0&navpanes=0`}
-            type="application/pdf"
-            aria-label="Resume PDF"
-          >
-            <FallbackPane onOpenTab={openTab} />
-          </object>
-        )}
+      <div className="res-pages">
+        {PAGES.map((src, i) => (
+          <img
+            key={src}
+            className="res-page"
+            src={src}
+            alt={`SoubhikGhosh-Resume.pdf, page ${i + 1} of ${PAGES.length}`}
+            draggable={false}
+          />
+        ))}
       </div>
 
       <div className="app-status">
         <span>SoubhikGhosh-Resume.pdf</span>
-        <button
-          type="button"
-          className="res-eject fit"
-          onClick={() => {
-            playClick()
-            setEjected((e) => !e)
-            show(
-              ejected
-                ? 'Re-inserting the paper into the tube…'
-                : 'Preview ejected. The download button never fails.',
-            )
-          }}
-        >
-          {ejected ? 'retry preview' : 'preview scrambled? click to eject'}
-        </button>
+        <span className="t-label t-soft">the real PDF is one click away above</span>
       </div>
 
       {toast}

@@ -4,6 +4,7 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from 'react'
 import { playBeep, playClick } from '../sound'
+import { useWorld } from '../../world'
 import './snake.css'
 
 /* =====================================================================
@@ -21,7 +22,6 @@ const H = ROWS * CELL
 
 const START_MS = 150
 const MIN_MS = 65
-const HI_KEY = 'soubhikos-snake-hi'
 const CRED_SCORE = 25
 
 type Dir = 'up' | 'down' | 'left' | 'right'
@@ -53,22 +53,13 @@ const KEY_DIR: Record<string, Dir> = {
   arrowright: 'right', d: 'right',
 }
 
+/* the high score lives in the world store (the one place that remembers) */
 function loadHi(): number {
-  try {
-    const v = window.localStorage.getItem(HI_KEY)
-    const n = v === null ? 0 : parseInt(v, 10)
-    return Number.isFinite(n) && n > 0 ? n : 0
-  } catch {
-    return 0
-  }
+  return useWorld.getState().snakeHi
 }
 
 function saveHi(v: number): void {
-  try {
-    window.localStorage.setItem(HI_KEY, String(v))
-  } catch {
-    /* private mode etc. — the score dies with the session */
-  }
+  useWorld.getState().setSnakeHi(v)
 }
 
 interface Palette {
@@ -139,6 +130,8 @@ export default function Snake() {
       setNewHi(true)
       saveHi(s)
     }
+    // the street-cred certificate is a ledger entry too
+    if (s >= CRED_SCORE) useWorld.getState().mark('snake25')
     setPhase('gameover')
     playBeep()
     beepTimerRef.current = window.setTimeout(() => playBeep(), 140)

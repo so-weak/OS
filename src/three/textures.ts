@@ -5,6 +5,8 @@
 
 import {
   CanvasTexture,
+  LinearFilter,
+  LinearMipmapLinearFilter,
   NearestFilter,
   RepeatWrapping,
   SRGBColorSpace,
@@ -22,11 +24,15 @@ export function mulberry(seed: number): () => number {
   }
 }
 
-export function makeCanvas(w: number, h: number): CanvasRenderingContext2D {
+export function makeCanvas(
+  w: number,
+  h: number,
+  readback = false,
+): CanvasRenderingContext2D {
   const c = document.createElement('canvas')
   c.width = w
   c.height = h
-  const ctx = c.getContext('2d')
+  const ctx = c.getContext('2d', readback ? { willReadFrequently: true } : undefined)
   if (!ctx) throw new Error('2d context unavailable')
   return ctx
 }
@@ -312,7 +318,7 @@ export function makeDocument(title: string, paragraphs: string[]): CanvasTexture
     ctx.arc(26, y, 9, 0, Math.PI * 2)
     ctx.fill()
   })
-  // faint coffee ring
+  // faint chai ring
   ctx.strokeStyle = 'rgba(107, 74, 47, 0.16)'
   ctx.lineWidth = 7
   ctx.beginPath()
@@ -390,6 +396,44 @@ export function makeSoftCircle(): CanvasTexture {
   g.addColorStop(1, 'rgba(255,255,255,0)')
   ctx.fillStyle = g
   ctx.fillRect(0, 0, 64, 64)
+  return finish(ctx, false)
+}
+
+/** One soft radial-ish blob, shared by every wall-hung drop shadow in the
+    room (posters, the shelf, the cork board, the right-wall print/bag).
+    They all used their own near-identical feathered rect before; one
+    96×96 texture reads the same once blurred onto a plane and stretched
+    per-instance by geometry size, so this is a pure texture-count win. */
+let sharedWallShadowBlobTex: CanvasTexture | null = null
+export function sharedWallShadowBlob(): CanvasTexture {
+  if (!sharedWallShadowBlobTex) sharedWallShadowBlobTex = makeFeatheredRect(96, 96, 0.6)
+  return sharedWallShadowBlobTex
+}
+
+/** Feathered white rectangle — the soft phosphor bleed around the CRT.
+    Alpha falls off smoothly over `feather` (fraction of the half-size)
+    from every edge, so an additive plane reads as light, not a card. */
+export function makeFeatheredRect(w = 128, h = 96, feather = 0.3): CanvasTexture {
+  const ctx = makeCanvas(w, h)
+  const img = ctx.createImageData(w, h)
+  const fx = (w / 2) * feather
+  const fy = (h / 2) * feather
+  const ease = (t: number) => t * t * (3 - 2 * t)
+  for (let y = 0; y < h; y++) {
+    const dy = Math.min(y + 0.5, h - y - 0.5)
+    const ay = ease(Math.min(1, dy / fy))
+    for (let x = 0; x < w; x++) {
+      const dx = Math.min(x + 0.5, w - x - 0.5)
+      const ax = ease(Math.min(1, dx / fx))
+      const i = (y * w + x) * 4
+      const a = ax * ay
+      img.data[i] = 255
+      img.data[i + 1] = 255
+      img.data[i + 2] = 255
+      img.data[i + 3] = Math.round(a * 255)
+    }
+  }
+  ctx.putImageData(img, 0, 0)
   return finish(ctx, false)
 }
 
@@ -555,6 +599,45 @@ export function makeLabel(
   return finish(ctx)
 }
 
+/** Several lines of pixel text, centred. `aspect` (w/h) pads the canvas
+    out to the shape of the sticker or plate it will be glued to. */
+export function makeLabelLines(
+  lines: string[],
+  fg: string,
+  bg: string | null = null,
+  cell = 4,
+  pad = 2,
+  aspect?: number,
+): CanvasTexture {
+  const lineGap = 2 * cell
+  const textW = Math.max(...lines.map((l) => pixelTextWidth(l))) * cell
+  const textH = lines.length * 5 * cell + (lines.length - 1) * lineGap
+  let w = textW + pad * 2
+  let h = textH + pad * 2
+  if (aspect) {
+    if (w / h < aspect) w = Math.round(h * aspect)
+    else h = Math.round(w / aspect)
+  }
+  const ctx = makeCanvas(w, h)
+  if (bg) {
+    ctx.fillStyle = bg
+    ctx.fillRect(0, 0, w, h)
+  }
+  const top = Math.round((h - textH) / 2)
+  lines.forEach((line, i) => {
+    const lw = pixelTextWidth(line) * cell
+    drawPixelText(
+      ctx,
+      line,
+      Math.round((w - lw) / 2),
+      top + i * (5 * cell + lineGap),
+      cell,
+      fg,
+    )
+  })
+  return finish(ctx)
+}
+
 /* ---------------------------------------------------------------------
    Surface textures
    --------------------------------------------------------------------- */
@@ -610,4 +693,239 @@ export function makeWallNoise(base: string, seed = 11): CanvasTexture {
   tex.wrapS = RepeatWrapping
   tex.wrapT = RepeatWrapping
   return tex
+}
+
+/* ---------------------------------------------------------------------
+   Surface maps (R-P6) — architectural surfaces get colour + bump +
+   roughness at 512², linear-filtered and anisotropic. Prints, posters
+   and labels stay Nearest (see finish()): that split is deliberate.
+   --------------------------------------------------------------------- */
+
+/** Linear, mipmapped, repeating, anisotropic. `srgb` for colour maps
+    only — bump/roughness data stays linear (NoColorSpace). */
+export function finishSurface(
+  ctx: CanvasRenderingContext2D,
+  anisotropy = 4,
+  srgb = true,
+): CanvasTexture {
+  const tex = new CanvasTexture(ctx.canvas)
+  if (srgb) tex.colorSpace = SRGBColorSpace
+  tex.wrapS = RepeatWrapping
+  tex.wrapT = RepeatWrapping
+  tex.magFilter = LinearFilter
+  tex.minFilter = LinearMipmapLinearFilter
+  tex.anisotropy = anisotropy
+  tex.needsUpdate = true
+  return tex
+}
+
+export interface SurfaceMaps {
+  map: CanvasTexture
+  bumpMap: CanvasTexture
+  roughnessMap: CanvasTexture
+  /** optional tangent-space normal map (plaster, varnished wood). Prefer it
+      over bumpMap where a material can take one; bumpMap stays filled so
+      older consumers keep working. */
+  normalMap?: CanvasTexture
+}
+
+export function disposeSurface(m: SurfaceMaps): void {
+  m.map.dispose()
+  m.bumpMap.dispose()
+  m.roughnessMap.dispose()
+  m.normalMap?.dispose()
+}
+
+/** Set the same repeat on every map of a surface. */
+export function repeatSurface(m: SurfaceMaps, x: number, y: number): SurfaceMaps {
+  m.map.repeat.set(x, y)
+  m.bumpMap.repeat.set(x, y)
+  m.roughnessMap.repeat.set(x, y)
+  m.normalMap?.repeat.set(x, y)
+  return m
+}
+
+/** Derive bump (height) and roughness maps from a drawn colour canvas:
+    grain luminance → height (dark grain = groove), darkness → roughness
+    (seams and knots are rougher than the varnished face). */
+function deriveMaps(
+  ctx: CanvasRenderingContext2D,
+  anisotropy: number,
+  roughBase: number,
+  roughSpan: number,
+): { bumpMap: CanvasTexture; roughnessMap: CanvasTexture } {
+  const { width: w, height: h } = ctx.canvas
+  const src = ctx.getImageData(0, 0, w, h).data
+  const n = w * h
+  const lum = new Float32Array(n)
+  let lo = Infinity
+  let hi = -Infinity
+  for (let i = 0; i < n; i++) {
+    const l = 0.2126 * src[i * 4] + 0.7152 * src[i * 4 + 1] + 0.0722 * src[i * 4 + 2]
+    lum[i] = l
+    if (l < lo) lo = l
+    if (l > hi) hi = l
+  }
+  const span = Math.max(1, hi - lo)
+  const bctx = makeCanvas(w, h)
+  const rctx = makeCanvas(w, h)
+  const bimg = bctx.createImageData(w, h)
+  const rimg = rctx.createImageData(w, h)
+  for (let i = 0; i < n; i++) {
+    const t = (lum[i] - lo) / span // 0 dark … 1 light
+    const height = Math.round(t * 255)
+    const rough = Math.round(
+      Math.min(1, roughBase + roughSpan * (1 - t)) * 255,
+    )
+    bimg.data[i * 4] = bimg.data[i * 4 + 1] = bimg.data[i * 4 + 2] = height
+    bimg.data[i * 4 + 3] = 255
+    rimg.data[i * 4] = rimg.data[i * 4 + 1] = rimg.data[i * 4 + 2] = rough
+    rimg.data[i * 4 + 3] = 255
+  }
+  bctx.putImageData(bimg, 0, 0)
+  rctx.putImageData(rimg, 0, 0)
+  return {
+    bumpMap: finishSurface(bctx, anisotropy, false),
+    roughnessMap: finishSurface(rctx, anisotropy, false),
+  }
+}
+
+/** Planked wood at 512²: per-plank tint, fine wobbly grain, seams and
+    the odd knot — plus bump and roughness derived from the same art. */
+export function makeWoodMaps(
+  base: string,
+  seam: string,
+  seed = 3,
+  anisotropy = 4,
+): SurfaceMaps {
+  const S = 512
+  const ctx = makeCanvas(S, S, true)
+  ctx.fillStyle = base
+  ctx.fillRect(0, 0, S, S)
+  const rand = mulberry(seed)
+  const plankH = 84
+  for (let y = 0; y < S; y += plankH) {
+    // plank-to-plank tint
+    const tint = (rand() - 0.5) * 26
+    ctx.fillStyle = `rgba(${tint > 0 ? '255,232,196' : '0,0,0'},${
+      Math.abs(tint) / 255
+    })`
+    ctx.fillRect(0, y, S, plankH)
+    // grain: long wobbly streaks, denser near the plank edges
+    const streaks = 150
+    for (let i = 0; i < streaks; i++) {
+      const gy = y + 4 + rand() * (plankH - 8)
+      const len = 40 + rand() * 300
+      const gx = rand() * S
+      const amp = 0.6 + rand() * 1.4
+      const freq = 0.01 + rand() * 0.03
+      const dark = rand() < 0.75
+      ctx.strokeStyle = dark
+        ? `rgba(0,0,0,${0.04 + rand() * 0.12})`
+        : `rgba(255,225,180,${0.04 + rand() * 0.07})`
+      ctx.lineWidth = rand() < 0.3 ? 2 : 1
+      ctx.beginPath()
+      for (let x = 0; x <= len; x += 6) {
+        const px = (gx + x) % S
+        const py = gy + Math.sin((gx + x) * freq) * amp
+        if (x === 0 || px < 6) ctx.moveTo(px, py)
+        else ctx.lineTo(px, py)
+      }
+      ctx.stroke()
+    }
+    // knots: a dark eye with a couple of rings
+    if (rand() < 0.75) {
+      const kx = rand() * S
+      const ky = y + 14 + rand() * (plankH - 28)
+      const kr = 4 + rand() * 5
+      for (let r = kr + 6; r > 0; r -= 2.5) {
+        ctx.strokeStyle = `rgba(0,0,0,${r <= kr ? 0.22 : 0.08})`
+        ctx.lineWidth = 1.5
+        ctx.beginPath()
+        ctx.ellipse(kx, ky, r * 1.6, r, 0, 0, Math.PI * 2)
+        ctx.stroke()
+      }
+      ctx.fillStyle = 'rgba(0,0,0,0.3)'
+      ctx.beginPath()
+      ctx.ellipse(kx, ky, kr * 0.9, kr * 0.55, 0, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    // seam
+    ctx.fillStyle = seam
+    ctx.fillRect(0, y, S, 3)
+    ctx.fillStyle = 'rgba(255,235,200,0.08)'
+    ctx.fillRect(0, y + 3, S, 1)
+  }
+  const map = finishSurface(ctx, anisotropy)
+  return { map, ...deriveMaps(ctx, anisotropy, 0.62, 0.36) }
+}
+
+/** Tileable 3-octave value noise in [0,1], `size` px square. */
+function valueNoise(size: number, seed: number): Float32Array {
+  const out = new Float32Array(size * size)
+  const smooth = (t: number) => t * t * (3 - 2 * t)
+  const octaves: [number, number][] = [
+    [8, 1],
+    [16, 0.5],
+    [32, 0.25],
+  ]
+  let total = 0
+  octaves.forEach(([cells, amp], o) => {
+    total += amp
+    const rand = mulberry(seed * 31 + o * 977)
+    const lattice = new Float32Array(cells * cells)
+    for (let i = 0; i < lattice.length; i++) lattice[i] = rand()
+    const cellPx = size / cells
+    for (let y = 0; y < size; y++) {
+      const fy = y / cellPx
+      const y0 = Math.floor(fy)
+      const ty = smooth(fy - y0)
+      const y1 = (y0 + 1) % cells
+      for (let x = 0; x < size; x++) {
+        const fx = x / cellPx
+        const x0 = Math.floor(fx)
+        const tx = smooth(fx - x0)
+        const x1 = (x0 + 1) % cells
+        const a = lattice[y0 * cells + x0]
+        const b = lattice[y0 * cells + x1]
+        const c = lattice[y1 * cells + x0]
+        const d = lattice[y1 * cells + x1]
+        const v = a + (b - a) * tx + (c - a) * ty + (a - b - c + d) * tx * ty
+        out[y * size + x] += v * amp
+      }
+    }
+  })
+  for (let i = 0; i < out.length; i++) out[i] /= total
+  return out
+}
+
+/** Painted plaster: value noise over the base colour, a dusting of
+    speckle, and a bump map from the same noise so light rakes across it. */
+export function makeWallMaps(
+  base: string,
+  seed = 11,
+  anisotropy = 4,
+): SurfaceMaps {
+  const S = 256
+  const ctx = makeCanvas(S, S, true)
+  ctx.fillStyle = base
+  ctx.fillRect(0, 0, S, S)
+  const noise = valueNoise(S, seed)
+  const img = ctx.getImageData(0, 0, S, S)
+  for (let i = 0; i < S * S; i++) {
+    const n = (noise[i] - 0.5) * 2 // -1 … 1
+    const k = 1 + n * 0.09
+    img.data[i * 4] = Math.min(255, img.data[i * 4] * k)
+    img.data[i * 4 + 1] = Math.min(255, img.data[i * 4 + 1] * k)
+    img.data[i * 4 + 2] = Math.min(255, img.data[i * 4 + 2] * k)
+  }
+  ctx.putImageData(img, 0, 0)
+  const rand = mulberry(seed)
+  for (let i = 0; i < 1400; i++) {
+    ctx.fillStyle =
+      rand() < 0.5 ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.06)'
+    ctx.fillRect(Math.floor(rand() * S), Math.floor(rand() * S), 1, 1)
+  }
+  const map = finishSurface(ctx, anisotropy)
+  return { map, ...deriveMaps(ctx, anisotropy, 0.9, 0.1) }
 }

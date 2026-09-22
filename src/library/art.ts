@@ -57,7 +57,8 @@ function mulberry(seed: number): () => number {
 
 /** Author credit used by shelf tooltips and card subtitles. */
 export function spineTooltip(b: Book): string {
-  return `${b.title} — ${authorLine(b)}`
+  const by = authorLine(b)
+  return by ? `${b.title} — ${by}` : b.title
 }
 
 /* ---------- physical size of a volume ---------- */
@@ -75,7 +76,8 @@ const BASE: BookDims = { thick: 0.032, tall: 0.212, deep: 0.142 }
 
 /** Deterministic per-book dimensions; `spine` overrides win. */
 export function bookDims(b: Book): BookDims {
-  const tall = b.spine?.tall ?? 0.9 + seeded(b.id, 'tall') * 0.22
+  // capped at 1.03 (0.22 m): five shelves leave no room for a taller spine
+  const tall = Math.min(1.03, b.spine?.tall ?? 0.9 + seeded(b.id, 'tall') * 0.22)
   const thick = b.spine?.thick ?? 0.78 + seeded(b.id, 'thick') * 0.55
   return {
     thick: BASE.thick * thick,

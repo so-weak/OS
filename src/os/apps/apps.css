@@ -431,10 +431,11 @@
   border: none;
   background: none;
   font-family: var(--font-ui);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.25;
   color: var(--ink);
   text-align: center;
+  overflow-wrap: anywhere;
   cursor: pointer;
 }
 .prj-item:hover .prj-item-label,
@@ -786,58 +787,31 @@
   }
 }
 
-/* ---------- Resume viewer ---------- */
+/* ---------- Resume viewer ----------
+   The pages themselves are the content: a scrollable strip of paper on
+   a dark well, like a scanner bed, sized to the window rather than the
+   image's native pixels. */
 
-.res-frame-wrap {
+.res-pages {
   flex: 1;
   min-height: 0;
   margin: 0 6px;
+  padding: 14px 0;
   box-shadow: var(--bevel-well);
   background: var(--face-dark);
-  display: flex;
-}
-.res-frame {
-  flex: 1;
-  width: 100%;
-  height: 100%;
-  border: none;
-}
-.res-fallback {
-  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  text-align: center;
-  padding: 24px;
-  background: var(--paper);
+  gap: 14px;
 }
-.res-fallback-title {
-  font-size: 16px;
-  font-weight: bold;
-}
-.res-fallback-sub {
-  font-size: 16px;
-  color: var(--ink-soft);
-  max-width: 360px;
-  line-height: 1.5;
-}
-.res-eject {
-  flex: none;
-  border: none;
-  font-family: var(--font-ui);
-  font-size: 16px;
-  color: var(--ink-soft);
-  background: var(--face);
-  box-shadow: var(--bevel-thin-in);
-  padding: 2px 8px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.res-eject:hover {
-  color: var(--ink);
-  text-decoration: underline;
+.res-page {
+  width: min(100%, 720px);
+  height: auto;
+  display: block;
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
 }
 
 /* ---------- Contact: mail compose ---------- */
@@ -1072,6 +1046,20 @@
   padding: 12px 14px 8px;
   overflow: auto;
 }
+/* text on the left, the launcher column on the right — the way a
+   period Welcome window laid out its "What's New" buttons */
+.wlc-cols {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.wlc-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
 .wlc-type {
   font-family: var(--font-term);
   font-size: 16px;
@@ -1097,19 +1085,21 @@
   color: var(--ink-soft);
 }
 .wlc-launchers {
-  display: flex;
-  gap: 8px;
-}
-.wlc-launch {
-  flex: 1;
+  flex: none;
+  width: 168px;
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 6px;
-  padding: 10px 4px 8px;
+}
+.wlc-launch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
   border: none;
   font-family: var(--font-ui);
   font-size: 16px;
+  text-align: left;
   color: var(--ink);
   background: var(--face);
   box-shadow: var(--bevel-out);
@@ -1117,6 +1107,7 @@
 }
 .wlc-launch:active {
   box-shadow: var(--bevel-in);
+  padding: 4px 7px 2px 9px;
 }
 .wlc-check {
   display: flex;
@@ -1129,12 +1120,17 @@
   flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   padding: 6px 14px 10px;
 }
 .wlc-hint {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  line-height: 1.1;
   color: var(--ink-soft);
 }
 .wlc-footer .btn {
+  flex: none;
   margin-left: auto;
 }

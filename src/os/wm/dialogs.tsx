@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { identity } from '../../data/resume'
 import { useSystem } from '../store'
+import { LEDGER, useWorld } from '../../world'
 import { AppIcon } from '../icons/AppIcon'
 import { playClick } from '../sound'
 import { GlyphClose, GlyphPower, BadgeErrorX } from './glyphs'
@@ -108,6 +109,10 @@ export function ShutdownDialog({ onClose }: { onClose: () => void }) {
 /* ---------- About SoubhikOS… ---------- */
 
 export function AboutDialog({ onClose }: { onClose: () => void }) {
+  // the ledger's quietest payoff: only a full set changes the licence
+  const complete = useWorld((s) =>
+    LEDGER.every((e) => s.found.includes(e.id)),
+  )
   return (
     <SysDialog
       title="About SoubhikOS"
@@ -124,7 +129,8 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
         </p>
         <div className="dlg-rule" />
         <p>
-          Licensed to: <b>whoever is reading this</b>
+          Licensed to:{' '}
+          <b>{complete ? 'a completionist. respect.' : 'whoever is reading this'}</b>
         </p>
         <p>
           Memory: 640K of RAM — which ought to be

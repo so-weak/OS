@@ -4,7 +4,8 @@ import { useRoom } from './roomState'
 
 /* =====================================================================
    The room tooltip — a tiny Silkscreen tag that trails the cursor while
-   a prop is hovered. Lives in the DOM beside the canvas (rendered by
+   a prop is hovered. (The old "hire" toast lived here too; it was a
+   floating panel and a dead end, so "hire" now boots the machine.) Lives in the DOM beside the canvas (rendered by
    Scene), positioned imperatively so it never re-renders per mousemove.
    ===================================================================== */
 
@@ -17,7 +18,7 @@ const tagStyle: CSSProperties = {
   zIndex: 45,
   pointerEvents: 'none',
   fontFamily: 'var(--font-label)',
-  fontSize: '9px',
+  fontSize: '8px',
   letterSpacing: '1px',
   textTransform: 'uppercase',
   whiteSpace: 'nowrap',
@@ -26,42 +27,6 @@ const tagStyle: CSSProperties = {
   border: '1px solid var(--face-darker)',
   boxShadow: '2px 2px 0 rgba(0, 0, 0, 0.55)',
   padding: '3px 7px 2px',
-}
-
-/* ---------- toast when someone types "hire" on the room keyboard ----------
-   Plain DOM on purpose: a drei <Html> without occlude="blending" resets
-   the canvas styles the CRT's blending mode depends on (see Monitor.tsx). */
-const toastStyle: CSSProperties = {
-  position: 'fixed',
-  zIndex: 45,
-  left: '50%',
-  top: '17%',
-  transform: 'translateX(-50%)',
-  pointerEvents: 'none',
-  fontFamily: 'var(--font-label)',
-  fontSize: '11px',
-  letterSpacing: '1px',
-  whiteSpace: 'nowrap',
-  color: 'var(--term-green)',
-  background: 'var(--ink)',
-  border: '1px solid var(--face-darker)',
-  boxShadow: '3px 3px 0 rgba(0, 0, 0, 0.55)',
-  padding: '6px 10px 5px',
-}
-
-export function HireToast() {
-  const active = useRoom((s) => s.hireActive)
-  const ping = useRoom((s) => s.hirePing)
-
-  // each fresh "hire" re-arms the 4.2s window (StrictMode-safe cleanup)
-  useEffect(() => {
-    if (!active) return
-    const id = window.setTimeout(() => useRoom.getState().endHire(), 4200)
-    return () => window.clearTimeout(id)
-  }, [active, ping])
-
-  if (!active) return null
-  return <div style={toastStyle}>HIRE SIGNAL RECEIVED. POWER ON!</div>
 }
 
 export default function RoomTooltip() {
