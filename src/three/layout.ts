@@ -80,8 +80,11 @@ export const TOWER_SIZE = { w: 0.22, h: 0.5, d: 0.48 } as const
 export const TOWER_YAW = -0.05
 
 /* ---------- camera ---------- */
-export const ROOM_CAM_POS = new Vector3(0.88, 1.24, 1.62)
-export const ROOM_CAM_TARGET = new Vector3(-0.04, 0.86, -0.55)
+/* pulled back and tilted down slightly from the original (0.88, 1.24,
+   1.62) -> (-0.04, 0.86, -0.55) so the wastebasket behind the chair and
+   the whole rug are back in frame */
+export const ROOM_CAM_POS = new Vector3(1.07, 1.43, 2.12)
+export const ROOM_CAM_TARGET = new Vector3(-0.1, 0.72, -0.5)
 /** Where the camera boots up on first load (dollies into ROOM_CAM_POS). */
 export const INTRO_CAM_POS = new Vector3(1.55, 1.72, 2.6)
 

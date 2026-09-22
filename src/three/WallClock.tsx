@@ -255,8 +255,8 @@ export default function WallClock() {
       </mesh>
       <mesh
         material={shadowMat}
-        position={[0.004, -0.152, 0.0004]}
-        scale={[0.2, 0.075, 1]}
+        position={[0.006, -0.16, 0.0004]}
+        scale={[0.3, 0.1, 1]}
       >
         <planeGeometry args={[1, 1]} />
       </mesh>
@@ -307,14 +307,14 @@ export default function WallClock() {
         </group>
 
         {/* the brass plate: where this clock lives, screwed to the wall */}
-        <group position={[0, -R - 0.03, 0.0032]}>
+        <group position={[0, -R - 0.037, 0.0032]}>
           <mesh material={plateBackMat}>
-            <roundedBoxGeometry args={rb(0.1, 0.02, 0.0055, 0.0012, 2)} />
+            <roundedBoxGeometry args={rb(0.22, 0.04, 0.0055, 0.0014, 2)} />
           </mesh>
           <mesh position={[0, 0, 0.00285]} material={plateMat}>
-            <planeGeometry args={[0.094, 0.0193]} />
+            <planeGeometry args={[0.214, 0.0389]} />
           </mesh>
-          {[-0.0455, 0.0455].map((sx) => (
+          {[-0.1, 0.1].map((sx) => (
             <mesh key={sx} position={[sx, 0, 0.0029]} material={brassMat}>
               <cylinderGeometry args={[0.0018, 0.0018, 0.0012, 10]} />
             </mesh>

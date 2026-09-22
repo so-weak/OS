@@ -26,8 +26,8 @@ import { mothTextures } from './tex/window'
    ===================================================================== */
 
 /* lamp head in world space: Lamp.tsx group (-0.55, DESK_TOP, -0.78)
-   rotated -0.4 about y, HEAD (0.305, 0.205, 0) → about here */
-const HEAD = new Vector3(-0.27, 0.95, -0.66)
+   yawed -41 degrees, bulb at local (0.300, 0.266, 0) → about here */
+const HEAD = new Vector3(-0.32, 1.0, -0.58)
 const DART = new Vector3(0.22, 0.34, 0.26)
 const SIZE = 0.03
 

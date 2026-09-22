@@ -188,20 +188,27 @@ function haloTexture(): { tex: CanvasTexture; w: number; h: number; cy: number }
   return { tex, w, h, cy: cyLocal }
 }
 
-/** The cord: along the sill, off its right end, down behind the desk. */
+/** The cord: off the sign's foot, back into the reveal and behind the pot
+    (so it never touches the trailing pothos, whose vines and leaves cover
+    the sill's front strip), forward again in the clear right of the plant,
+    over the sill's end and down behind the desk. */
 function cordGeometry(): BufferGeometry {
   const y = SILL_Y + 0.0035
   const pts = [
     new Vector3(CX + R0 + 0.02, SILL_Y + 0.008, CZ),
-    new Vector3(CX + R0 + 0.07, y, -0.99),
-    new Vector3(-0.95, y, -0.985),
-    new Vector3(-0.8, y, -0.985),
-    new Vector3(-0.722, y - 0.004, -0.985),
-    new Vector3(-0.716, y - 0.06, -0.984),
+    new Vector3(-1.005, y, -1.05),
+    new Vector3(-0.975, y, -1.083),
+    new Vector3(-0.93, y, -1.09),
+    new Vector3(-0.89, y, -1.083),
+    new Vector3(-0.845, y, -1.05),
+    new Vector3(-0.805, y, -1.03),
+    new Vector3(-0.765, y, -1.008),
+    new Vector3(-0.73, y - 0.002, -0.992),
+    new Vector3(-0.716, y - 0.05, -0.984),
     new Vector3(-0.716, 0.9, -0.984),
     new Vector3(-0.72, 0.76, -0.99),
   ]
-  return new TubeGeometry(new CatmullRomCurve3(pts, false, 'centripetal'), 90, 0.0022, 5, false)
+  return new TubeGeometry(new CatmullRomCurve3(pts, false, 'centripetal'), 120, 0.0022, 5, false)
 }
 
 /* ---------- the component ---------- */
