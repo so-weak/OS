@@ -1,29 +1,36 @@
-import { useState } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { PerformanceMonitor } from '@react-three/drei'
+import { Vector3 } from 'three'
 import { CAM_FOV } from '../constants'
+import AdaptiveQuality from './AdaptiveQuality'
 import Bookcase from './Bookcase'
 import CameraRig from './CameraRig'
 import DayNight from './DayNight'
 import Desk, { Cables } from './Desk'
 import Drawers from './Drawers'
-import Duck from './Duck'
 import DeskClutter from './DeskClutter'
 import DustMotes from './DustMotes'
 import Keyboard from './Keyboard'
+import Labubu from './Labubu'
 import Lamp from './Lamp'
 import Monitor from './Monitor'
 import Papers from './Papers'
 import Room from './Room'
 import LibraryHud from './LibraryHud'
+import PinHud from './PinHud'
+import RainAudio from './RainAudio'
 import Scenery from './Scenery'
 import SetDressing from './SetDressing'
+import ShadowScheduler from './ShadowScheduler'
 import RoomTooltip from './Tooltip'
 import Tower from './Tower'
 import TrashGame from './TrashGame'
 import RoomWindow from './Window'
 import WorldFrame from './WorldFrame'
 import { INTRO_CAM_POS, P } from './layout'
+import { useRoom } from './roomState'
+import { useSystem } from '../os/store'
+import { useLibrary } from './libraryState'
+import { useWorld } from '../world'
 
 /* =====================================================================
    Scene root — the full-viewport R3F canvas plus the DOM overlays that
@@ -33,7 +40,7 @@ import { INTRO_CAM_POS, P } from './layout'
    element to pointer-events:none (the DOM screen lives *behind* the
    canvas and shows through a punched alpha hole). So pointer events are
    sourced from #root instead, with client coordinates; that keeps every
-   3D clickable (duck, lamp, tower, monitor, papers, bin…) live at the
+   3D clickable (labubu, lamp, tower, monitor, papers, bin…) live at the
    same time as the DOM screen. zIndexRange on the Html (see Monitor.tsx)
    keeps the canvas below the HUD overlays in App.tsx (z-index 50).
 
@@ -51,17 +58,21 @@ declare global {
   interface Window {
     __gl?: import('three').WebGLRenderer
     __scene?: import('three').Scene
+    __project?: (x: number, y: number, z: number) => [number, number]
   }
 }
 
+/** dev only: ?dpr=1.5 pins the canvas resolution (perf experiments) */
+const PINNED_DPR = import.meta.env.DEV
+  ? Number(new URLSearchParams(window.location.search).get('dpr') || 0)
+  : 0
+
 export default function Scene() {
-  /* R-P10: cap pixel ratio at 1.5 and drop to 1 when frames stutter */
-  const [dpr, setDpr] = useState<number | [number, number]>([1, 1.5])
   return (
     <>
       <Canvas
         shadows="percentage"
-        dpr={dpr}
+        dpr={PINNED_DPR || [1, 1.25]}
         camera={{
           fov: CAM_FOV,
           near: 0.04,
@@ -69,12 +80,20 @@ export default function Scene() {
           position: [INTRO_CAM_POS.x, INTRO_CAM_POS.y, INTRO_CAM_POS.z],
         }}
         gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
-        onCreated={({ gl, scene }) => {
+        onCreated={({ gl, scene, camera }) => {
           // dev only: window.__gl.info.render → { calls, triangles } for perf
-          // checks; window.__scene lets experiments toggle lights and meshes
+          // checks; window.__scene lets experiments toggle lights and meshes;
+          // window.__project(x, y, z) returns the CSS-pixel screen position of
+          // a world point (for scripted clicks that survive camera changes)
           if (import.meta.env.DEV) {
             window.__gl = gl
             window.__scene = scene
+            window.__project = (x, y, z) => {
+              const v = new Vector3(x, y, z).project(camera)
+              const r = gl.domElement.getBoundingClientRect()
+              return [r.left + ((v.x + 1) / 2) * r.width, r.top + ((1 - v.y) / 2) * r.height]
+            }
+            ;(window as unknown as Record<string, unknown>).__stores = { room: useRoom, sys: useSystem, lib: useLibrary, world: useWorld }
           }
         }}
         eventSource={document.getElementById('root') as HTMLElement}
@@ -82,7 +101,7 @@ export default function Scene() {
         style={{ position: 'fixed', inset: 0 }}
       >
         <color attach="background" args={[P.night]} />
-        <PerformanceMonitor onDecline={() => setDpr(1)} />
+        {!PINNED_DPR && <AdaptiveQuality />}
 
         {/* damps every shared light value first (priority -1) */}
         <WorldFrame />
@@ -99,7 +118,7 @@ export default function Scene() {
         <Tower />
         <Keyboard />
         <Lamp />
-        <Duck />
+        <Labubu />
         <Papers />
         <Bookcase />
         <TrashGame />
@@ -108,9 +127,14 @@ export default function Scene() {
         <Scenery />
         <DeskClutter />
         <SetDressing />
+        {/* rain on the glass: renders nothing, reads live.rain each frame */}
+        <RainAudio />
+        {/* last, so its frame callback sees every prop's motion this frame */}
+        <ShadowScheduler />
       </Canvas>
       <RoomTooltip />
       <LibraryHud />
+      <PinHud />
     </>
   )
 }
