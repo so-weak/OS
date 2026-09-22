@@ -22,11 +22,9 @@ import {
   Vector3,
   type Group,
   type Mesh,
-  type RectAreaLight,
   type SpotLight,
   type Texture,
 } from 'three'
-import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js'
 import { useSystem } from '../os/store'
 import { playClick } from '../os/sound'
 import { useWorld } from '../world'
@@ -86,7 +84,7 @@ import {
    - the outside   painted layers hung at real depths behind the hole
                    (windowArt.ts), so the sky slides against the frame
                    when the camera moves — night AND day sets
-   - the light     RectAreaLight spill, the sun spot with its blind gobo
+   - the light     a wide shadowless spot for the spill, the sun spot with its blind gobo
                    attached AT MOUNT, and a day-only shaft (R-P9/R-P5)
    - weather       rain greys the layers and beads the glass; lightning
                    washes the sky behind the skylines and forks a bolt
@@ -103,9 +101,13 @@ import {
    hole because the wall is opaque and writes depth first.
    ===================================================================== */
 
-/* rect area lights need the LTC tables in the uniform library — once,
-   before the first lit shader compiles */
-RectAreaLightUniformsLib.init()
+/* The window's spill used to be a RectAreaLight. Its LTC evaluation ran per
+   fragment for every lit material and was ~40 % of the whole frame on an
+   integrated GPU, so it is now a wide, soft, shadowless SpotLight at the
+   same place with the same energy: a Lambert emitter of luminance L over
+   the pane's area A lights a surface like a point of intensity L·A, and a
+   penumbra-1 cone with a wide half-angle falls off close to cos(θ). */
+const SPILL_AREA = 0.62 * 0.82
 
 /* ---------- palette ---------- */
 const WHITE = new Color('#ffffff')
@@ -154,8 +156,8 @@ function makeShaftMaterial(): ShaderMaterial {
       opacity: { value: 0 },
       lightColor: { value: new Color(SUN_SPILL) },
       spotPosition: { value: new Vector3() },
-      attenuation: { value: 3.0 },
-      anglePower: { value: 1.5 },
+      attenuation: { value: 2.6 },
+      anglePower: { value: 2.4 },
     },
     vertexShader: /* glsl */ `
       uniform vec3 spotPosition;
@@ -187,8 +189,12 @@ function makeShaftMaterial(): ShaderMaterial {
 }
 
 function makeShaftGeometry(distance: number): CylinderGeometry {
-  // apex at the origin, opening along +z so mesh.lookAt(target) aims it
-  const g = new CylinderGeometry(0.05, 1.1, distance, 48, 6, true)
+  // apex at the origin, opening along +z so mesh.lookAt(target) aims it.
+  // The far radius used to be 1.1 — wider than the room is deep, so from
+  // some angles the whole cone's flared mouth showed through the glass
+  // as a flat pale wedge instead of a beam. 0.4 keeps it a believable
+  // shaft that has visibly widened by the time it reaches the rug.
+  const g = new CylinderGeometry(0.05, 0.4, distance, 48, 6, true)
   g.applyMatrix4(new Matrix4().makeTranslation(0, -distance / 2, 0))
   g.applyMatrix4(new Matrix4().makeRotationX(-Math.PI / 2))
   return g
@@ -811,7 +817,7 @@ export default function RoomWindow() {
   const rainBeads = useRef<Mesh>(null!)
   const streakMat = useRef<MeshBasicMaterial>(null!)
   const beadMat = useRef<MeshBasicMaterial>(null!)
-  const spill = useRef<RectAreaLight>(null!)
+  const spill = useRef<SpotLight>(null!)
   const sun = useRef<SpotLight>(null!)
   const shaft = useRef<Mesh>(null!)
   const slats = useRef<InstancedMesh>(null!)
@@ -821,6 +827,12 @@ export default function RoomWindow() {
   const sunTarget = useMemo(() => {
     const o = new Object3D()
     o.position.copy(SUN_TARGET_NOON)
+    return o
+  }, [])
+  // the spill leaves the pane straight into the room, like the area light did
+  const spillTarget = useMemo(() => {
+    const o = new Object3D()
+    o.position.set(0, 0, 1)
     return o
   }, [])
 
@@ -900,8 +912,9 @@ export default function RoomWindow() {
       .lerp(DUSK_SPILL, dusk * 0.7)
       .lerp(FLASH_TINT, flash)
     spill.current.intensity =
-      MathUtils.lerp(0.8, 6, day) * (1 - 0.35 * rain) * (1 - 0.8 * closed) +
-      flash * 2.5 * (1 - 0.7 * closed)
+      SPILL_AREA *
+      (MathUtils.lerp(0.8, 6, day) * (1 - 0.35 * rain) * (1 - 0.8 * closed) +
+        flash * 2.5 * (1 - 0.7 * closed))
 
     /* the sun spot: warmer, weaker and lower at golden hour; it doubles
        as the strobe, capped at +10 (28 clips the desk to paper white) */
@@ -911,17 +924,14 @@ export default function RoomWindow() {
       .lerp(FLASH_TINT, flash)
     sun.current.color.copy(sunColor)
     sun.current.intensity =
-      day * MathUtils.lerp(3.4, 2.4, dusk) * (1 - 0.6 * rain) +
+      day * MathUtils.lerp(2.6, 1.9, dusk) * (1 - 0.6 * rain) +
       flash * 10 * (1 - 0.7 * closed)
     target.current.position.copy(SUN_TARGET_NOON).lerp(SUN_TARGET_DUSK, dusk)
 
-    /* freeze the sun's shadow pass while nothing lights it — never touch
-       castShadow (that recompiles every lit material) */
-    const lit = day >= 0.01 || flash > 0
-    if (lit !== sun.current.shadow.autoUpdate) {
-      sun.current.shadow.autoUpdate = lit
-      if (lit) sun.current.shadow.needsUpdate = true
-    }
+    /* the sun's shadow map is scheduled by ShadowScheduler: it skips the
+       pass while the sun is dark and refreshes it when the sun wakes or
+       the light drifts (never touch castShadow here — that recompiles
+       every lit material) */
 
     /* the shaft: day only, dies in the air before the rug */
     const showShaft = day > 0.02
@@ -1040,11 +1050,17 @@ export default function RoomWindow() {
 
         {/* moonlight / sunlight spilling in: a light the size of the glass,
             facing into the room (lights emit down their local -z) */}
-        <rectAreaLight
+        <primitive object={spillTarget} />
+        <spotLight
           ref={spill}
-          args={['#7b93c9', 0.8, 0.62, 0.82]}
+          color="#7b93c9"
+          intensity={SPILL_AREA * 0.8}
           position={[0, 0, 0.04]}
-          rotation-y={Math.PI}
+          target={spillTarget}
+          angle={1.45}
+          penumbra={1}
+          distance={0}
+          decay={2}
         />
 
         {/* the sun: a shadow-casting spot, with the blind gobo attached at
@@ -1056,8 +1072,8 @@ export default function RoomWindow() {
           target={sunTarget}
           color={SUN_SPILL}
           intensity={0}
-          angle={0.62}
-          penumbra={0.7}
+          angle={0.85}
+          penumbra={1}
           distance={6.5}
           decay={1.1}
           map={gobo.texture}
