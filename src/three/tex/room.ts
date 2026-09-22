@@ -1988,16 +1988,17 @@ export interface CardSpec {
   pinAt?: [number, number]
 }
 
-const ATLAS = 1024
+const ATLAS = 512
 
+/* The four photographs (pinState.ts PRINTS) own the top and the left of
+   the board; these little paper cards are what is left of the old clutter,
+   pinned in the corner that remains. Board metres from the cork's centre. */
 export const CARDS: CardSpec[] = [
-  { id: 'todo', w: 0.127, h: 0.076, x: -0.13, y: 0.09, rot: 0.05, pin: '#d94a3d', ax: 0, ay: 0, aw: 256, ah: 152 },
-  { id: 'net', w: 0.127, h: 0.076, x: 0.075, y: 0.085, rot: -0.04, pin: '#2f8f9d', ax: 256, ay: 0, aw: 256, ah: 152 },
-  { id: 'ticket', w: 0.09, h: 0.04, x: -0.03, y: -0.005, rot: 0.14, pin: '#e6b83a', ax: 512, ay: 0, aw: 256, ah: 116, pinAt: [-0.036, -0.004] },
-  { id: 'photo', w: 0.078, h: 0.094, x: -0.165, y: -0.07, rot: -0.09, pin: '#8a5cc2', ax: 768, ay: 0, aw: 200, ah: 240 },
-  { id: 'yellow', w: 0.052, h: 0.052, x: 0.165, y: -0.02, rot: 0.08, pin: '#d94a3d', ax: 0, ay: 256, aw: 128, ah: 128 },
-  { id: 'card', w: 0.108, h: 0.072, x: 0.06, y: -0.085, rot: 0.035, pin: '#3aa76d', ax: 128, ay: 256, aw: 256, ah: 170 },
-  { id: 'pink', w: 0.042, h: 0.042, x: 0.185, y: 0.115, rot: -0.16, pin: '#2f8f9d', ax: 384, ay: 256, aw: 100, ah: 100 },
+  { id: 'todo', w: 0.108, h: 0.0645, x: 0.02, y: -0.058, rot: 0.05, pin: '#8a5cc2', ax: 0, ay: 0, aw: 256, ah: 152 },
+  { id: 'net', w: 0.108, h: 0.0645, x: 0.148, y: -0.055, rot: -0.04, pin: '#2f8f9d', ax: 256, ay: 0, aw: 256, ah: 152 },
+  { id: 'ticket', w: 0.082, h: 0.0365, x: 0.05, y: -0.128, rot: 0.12, pin: '#e6b83a', ax: 0, ay: 152, aw: 256, ah: 116, pinAt: [-0.03, -0.004] },
+  { id: 'yellow', w: 0.046, h: 0.046, x: 0.137, y: -0.126, rot: 0.08, pin: '#d94a3d', ax: 256, ay: 152, aw: 128, ah: 128 },
+  { id: 'pink', w: 0.038, h: 0.038, x: 0.195, y: -0.128, rot: -0.16, pin: '#3aa76d', ax: 384, ay: 152, aw: 100, ah: 100 },
 ]
 
 function wobble(
@@ -2157,36 +2158,6 @@ export function makeCardAtlas(seed = 9): CanvasTexture {
     ctx.restore()
   }
   {
-    // an instant photo: dusk sky, a sun, a dark treeline, a scrawled caption
-    const c = at('photo')
-    ctx.save()
-    ctx.translate(c.ax, c.ay)
-    ctx.fillStyle = '#f3f0e4'
-    ctx.fillRect(0, 0, c.aw, c.ah)
-    const g = ctx.createLinearGradient(0, 14, 0, 176)
-    g.addColorStop(0, '#22336b')
-    g.addColorStop(0.55, '#a5527d')
-    g.addColorStop(0.85, '#f0a24d')
-    g.addColorStop(1, '#f6d788')
-    ctx.fillStyle = g
-    ctx.fillRect(14, 14, c.aw - 28, 162)
-    ctx.fillStyle = 'rgba(255,240,190,0.9)'
-    ctx.beginPath()
-    ctx.arc(c.aw * 0.62, 132, 15, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.fillStyle = '#141a2c'
-    ctx.beginPath()
-    ctx.moveTo(14, 176)
-    for (let x = 14; x <= c.aw - 14; x += 6) ctx.lineTo(x, 150 - Math.abs(Math.sin(x * 0.11 + 1)) * 16 - rand() * 6)
-    ctx.lineTo(c.aw - 14, 176)
-    ctx.closePath()
-    ctx.fill()
-    ctx.strokeStyle = '#36406b'
-    ctx.lineWidth = 1.6
-    scribble(ctx, rand, 20, 208, 100, 5)
-    ctx.restore()
-  }
-  {
     // yellow sticky
     const c = at('yellow')
     ctx.save()
@@ -2199,49 +2170,6 @@ export function makeCardAtlas(seed = 9): CanvasTexture {
     ctx.lineWidth = 1.8
     for (let i = 0; i < 4; i++) scribble(ctx, rand, 12, 34 + i * 20, 60 + rand() * 40, 5)
     drawPixelText(ctx, '>_', 12, 108, 2, '#2a3f7e')
-    ctx.restore()
-  }
-  {
-    // a postcard: a dusk river and a bridge
-    const c = at('card')
-    ctx.save()
-    ctx.translate(c.ax, c.ay)
-    ctx.fillStyle = '#efe8d3'
-    ctx.fillRect(0, 0, c.aw, c.ah)
-    const sky = ctx.createLinearGradient(0, 8, 0, 96)
-    sky.addColorStop(0, '#385a99')
-    sky.addColorStop(0.7, '#e08a5a')
-    sky.addColorStop(1, '#f5c987')
-    ctx.fillStyle = sky
-    ctx.fillRect(8, 8, c.aw - 16, 90)
-    const water = ctx.createLinearGradient(0, 98, 0, 150)
-    water.addColorStop(0, '#d4855a')
-    water.addColorStop(1, '#2c4470')
-    ctx.fillStyle = water
-    ctx.fillRect(8, 98, c.aw - 16, 52)
-    ctx.fillStyle = '#1a2036'
-    ctx.fillRect(8, 90, c.aw - 16, 8)
-    ctx.strokeStyle = '#1a2036'
-    ctx.lineWidth = 3
-    for (const bx of [58, 150, 214]) {
-      ctx.beginPath()
-      ctx.moveTo(bx, 90)
-      ctx.lineTo(bx, 50)
-      ctx.stroke()
-    }
-    ctx.lineWidth = 1.5
-    for (let x = 58; x < 214; x += 12) {
-      ctx.beginPath()
-      ctx.moveTo(x, 90)
-      ctx.lineTo(x + 6, 52 + Math.abs(x - 150) * 0.1)
-      ctx.stroke()
-    }
-    ctx.beginPath()
-    ctx.moveTo(58, 50)
-    ctx.quadraticCurveTo(104, 78, 150, 50)
-    ctx.quadraticCurveTo(182, 76, 214, 50)
-    ctx.stroke()
-    drawPixelText(ctx, 'GREETINGS', 16, 130, 2, '#f6ecd0')
     ctx.restore()
   }
   {
@@ -2263,12 +2191,12 @@ export function makeCardAtlas(seed = 9): CanvasTexture {
 }
 
 /** All cards as ONE geometry: each a lightly curled 3×3 sheet with its own
-    atlas UVs, layered a fraction of a millimetre apart, plus a soft drop
-    shadow sheet per card (second geometry). Board-local, z = 0 is the cork. */
-export function cardsGeo(): { cards: BufferGeometry; shadows: BufferGeometry; pins: { x: number; y: number; z: number; color: string }[] } {
+    atlas UVs, layered a fraction of a millimetre apart. Their soft drop
+    shadows are drawn with the photographs' (PinUps.tsx). Board-local, z = 0
+    is the cork. */
+export function cardsGeo(): { cards: BufferGeometry; pins: { id: string; x: number; y: number; z: number; color: string }[] } {
   const parts: BufferGeometry[] = []
-  const shade: BufferGeometry[] = []
-  const pins: { x: number; y: number; z: number; color: string }[] = []
+  const pins: { id: string; x: number; y: number; z: number; color: string }[] = []
   const q = new Quaternion()
   CARDS.forEach((c, i) => {
     const g = new PlaneGeometry(c.w, c.h, 3, 3)
@@ -2290,14 +2218,11 @@ export function cardsGeo(): { cards: BufferGeometry; shadows: BufferGeometry; pi
     q.setFromAxisAngle(new Vector3(0, 0, 1), c.rot)
     g.applyMatrix4(new Matrix4().compose(new Vector3(c.x, c.y, z), q, new Vector3(1, 1, 1)))
     parts.push(g)
-    const sh = new PlaneGeometry(c.w + 0.02, c.h + 0.02)
-    sh.applyMatrix4(new Matrix4().compose(new Vector3(c.x + 0.003, c.y - 0.004, 0.0016), q, new Vector3(1, 1, 1)))
-    shade.push(sh)
     // the pin sits a little below the top edge, along the tilted card
     const top = new Vector3(c.pinAt ? c.pinAt[0] : 0, c.h / 2 - 0.011 + (c.pinAt ? c.pinAt[1] : 0), 0).applyQuaternion(q)
-    pins.push({ x: c.x + top.x, y: c.y + top.y, z: z + 0.0012, color: c.pin })
+    pins.push({ id: c.id, x: c.x + top.x, y: c.y + top.y, z: z + 0.0012, color: c.pin })
   })
-  return { cards: weld(parts), shadows: weld(shade), pins }
+  return { cards: weld(parts), pins }
 }
 
 /* ---------------------------------------------------------------------
