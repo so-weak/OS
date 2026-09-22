@@ -25,8 +25,7 @@ function closeLines(): string[] {
   const w = useWorld.getState()
   const lines = ['Stopping window manager … done']
   if (w.snakeHi > 0) lines.push(`Saving Nibbles high score (${w.snakeHi}) … done`)
-  // w.duckClicks: persisted field name from the duck era, kept — see eggs.ts
-  if (w.duckClicks >= 10) lines.push('Un-gilding labubu … refused')
+  if (w.duckClicks >= 10) lines.push('Returning duck to factory yellow … refused')
   lines.push(`Logging visit #${w.visits} … done`)
   lines.push('Committing your impression to memory … done')
   lines.push('Powering down phosphors …')

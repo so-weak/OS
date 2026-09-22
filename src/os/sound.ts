@@ -206,39 +206,6 @@ export function playBeep(): void {
   }
 }
 
-/** Squeaky-toy giggle — three quick rising chirps through a narrow
-    band-pass, like a plush toy's squeeze-box. Labubu's click sound
-    (replaces the old rubber duck's playBeep()). Under half a second. */
-export function playLabubuGiggle(): void {
-  try {
-    if (throttled('labubu', 60)) return
-    const o = out()
-    if (!o) return
-    const { ac, bus } = o
-    const t = ac.currentTime
-
-    const bp = ac.createBiquadFilter()
-    bp.type = 'bandpass'
-    bp.frequency.value = 2100
-    bp.Q.value = 3.2
-    bp.connect(bus)
-
-    ;[0, 0.1, 0.2].forEach((offset, i) => {
-      tone(ac, bp, {
-        type: 'triangle',
-        freq: 920 + i * 160,
-        glideTo: 1500 + i * 220,
-        t0: t + offset,
-        dur: 0.09,
-        peak: 0.085,
-        attack: 0.004,
-      })
-    })
-  } catch {
-    /* stay silent */
-  }
-}
-
 /** Warm rising arpeggio with slight detune — desktop is about to appear. */
 export function playStartup(): void {
   try {

@@ -9,7 +9,6 @@ import { apps } from '../registry'
 import { useSystem, useWindows } from '../store'
 import { DUCK_GOLDEN_AT, useEggs } from '../eggs'
 import { useLibrary } from '../../three/libraryState'
-import { usePins } from '../../three/pinState'
 import { LEDGER, useWorld, type Weather } from '../../world'
 import { playBeep } from '../sound'
 import { SCREEN_W, SCREEN_H } from '../../constants'
@@ -56,7 +55,7 @@ const DOCUMENTED = [
 const COMPLETABLE = [
   ...DOCUMENTED, 'dir', 'cls', 'sudo', 'matrix', 'crash', 'bsod',
   'format', 'echo', 'ver', 'history', 'whereis', 'pwd', 'cd', 'man',
-  'labubu', 'duck', 'hack', 'quit', 'date', 'soweak', 'weather', 'forget',
+  'duck', 'hack', 'quit', 'date', 'soweak', 'weather', 'forget',
   'konnichiwa',
 ]
 
@@ -462,24 +461,24 @@ export default function Terminal({ windowId }: AppProps) {
     push(WEATHER_LINE[want], 'tc-amber')
   }
 
-  const cmdLabubu = (): void => {
-    // world.duckClicks / DUCK_GOLDEN_AT / clickDuck are persisted names
-    // from the duck era, kept on purpose — see Labubu.tsx's header comment.
+  const cmdDuck = (): void => {
     const world = useWorld.getState()
     const golden = world.duckClicks >= DUCK_GOLDEN_AT
-    pushAll(['   /\\_/\\ ', '  ( o.o )  hee hee.', '   > ^ <'])
+    pushAll([
+      '   __', '  ( o>   quack.', '  /))', '   ""',
+    ])
     if (golden) {
-      // golden labubu whispers one thing you have not found yet
+      // the golden debugger whispers one thing you have not found yet
       const left = LEDGER.filter((e) => !world.found.includes(e.id))
       if (left.length) {
         const riddle = left[world.duckClicks % left.length].riddle
-        push(`golden labubu, quietly: "${riddle}"`, 'tc-amber')
+        push(`the golden one, quietly: "${riddle}"`, 'tc-amber')
         push(`(it knows ${left.length} more. ask again.)`, 'tc-dim')
       } else {
-        push('golden labubu has nothing left to tell you. respect.', 'tc-amber')
+        push('the golden one has nothing left to tell you. respect.', 'tc-amber')
       }
     } else {
-      push('the labubu in the room heard that.', 'tc-dim')
+      push('the rubber duck in the room heard that.', 'tc-dim')
     }
     useEggs.getState().clickDuck()
   }
@@ -603,18 +602,6 @@ export default function Terminal({ windowId }: AppProps) {
           useLibrary.getState().openLibrary()
         })
         break
-      case 'pinboard':
-      case 'pins':
-      case 'photos':
-        push('')
-        push('  the pin-up board. leaving the desk…', 'tc-amber')
-        push('  (esc steps back. the arrow keys flip through.)', 'tc-dim')
-        playBeep()
-        after(500, () => {
-          useSystem.getState().zoomOut()
-          usePins.getState().openBoard()
-        })
-        break
       case 'echo':
         push(arg)
         break
@@ -643,9 +630,8 @@ export default function Terminal({ windowId }: AppProps) {
           ? `${identity.location}. also: ${identity.github}`
           : `whereis: ${arg || 'what'}: not found (Soubhik is in ${identity.location}, if that helps)`)
         break
-      case 'labubu':
-      case 'duck': // kept as an alias — muscle memory shouldn't 404
-        cmdLabubu()
+      case 'duck':
+        cmdDuck()
         break
       case 'soweak':
         cmdSoweak()
@@ -655,7 +641,7 @@ export default function Terminal({ windowId }: AppProps) {
         break
       case 'forget':
         useWorld.getState().forget()
-        push('memory wiped. labubu is factory pink again.', 'tc-amber')
+        push('memory wiped. the duck is yellow again.', 'tc-amber')
         break
       case 'konnichiwa':
       case 'konnichiha':
