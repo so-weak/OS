@@ -62,10 +62,26 @@ function toRuns(rows: readonly string[]): Run[] {
   return out
 }
 
+/* An icon's rects never change — not between sizes, not between mounts,
+   not between renders — so they are built once, lazily, and the finished
+   <svg> is kept per rendered size. Handing React the IDENTICAL element
+   back on a re-render lets it bail out of the whole subtree: the DOM is
+   never touched, which is both why it is fast and why the pixels cannot
+   move. (Before this, every parent re-render — the taskbar clock ticking,
+   a desktop icon being selected — rebuilt ~40 <rect> elements per icon;
+   that alone was 470 ms of a throttled boot.) Sizes are the handful of
+   grid-locked values the OS uses (16/24/28/32/36/40/64), so the cache is
+   bounded by construction. */
 function makeIcon(rows: readonly string[]): (p: { size: number }) => JSX.Element {
-  const runs = toRuns(rows)
+  let rects: JSX.Element[] | null = null
+  const bySize = new Map<number, JSX.Element>()
   return function PixelIcon({ size }: { size: number }): JSX.Element {
-    return (
+    const hit = bySize.get(size)
+    if (hit) return hit
+    rects ??= toRuns(rows).map((r, i) => (
+      <rect key={i} x={r.x} y={r.y} width={r.w} height={1} fill={r.fill} />
+    ))
+    const el = (
       <svg
         width={size}
         height={size}
@@ -74,11 +90,11 @@ function makeIcon(rows: readonly string[]): (p: { size: number }) => JSX.Element
         aria-hidden="true"
         focusable="false"
       >
-        {runs.map((r, i) => (
-          <rect key={i} x={r.x} y={r.y} width={r.w} height={1} fill={r.fill} />
-        ))}
+        {rects}
       </svg>
     )
+    bySize.set(size, el)
+    return el
   }
 }
 

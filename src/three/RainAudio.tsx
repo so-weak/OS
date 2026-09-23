@@ -17,10 +17,12 @@ import { live } from './live'
    Renders nothing. It hands the ambience (src/os/rainSound.ts) what the
    room already knows — live.rain, whether the sky is a storm, whether
    the OS fills the screen, whether the camera is at the bookcase, the
-   mute flag — and the ambience does the rest: it retargets its level
-   ten times a second, builds its loops in ~1.5 ms slices, starts on the
-   first gesture, and lets go of every node when the tab is hidden or
-   this component unmounts (the /library page unmounts the whole scene).
+   mute flag — and the ambience does the rest: the moment it hears that
+   it is raining today it has its loops synthesised in idle time behind
+   the reveal, it retargets its level ten times a second, it starts the
+   instant the first gesture unlocks audio (the loops are already
+   waiting), and it lets go of every node when the tab is hidden or this
+   component unmounts (the /library page unmounts the whole scene).
 
    The inputs object is reused every frame: no per-frame allocation.
    ===================================================================== */

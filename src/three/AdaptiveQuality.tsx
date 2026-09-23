@@ -140,7 +140,6 @@ function dprFor(view: string, textView: boolean, rung: number, top: number): num
 
 export default function AdaptiveQuality() {
   const gl = useThree((s) => s.gl)
-  const setDpr = useThree((s) => s.setDpr)
   const view = useSystem((s) => s.view)
   const libraryOpen = useLibrary((s) => s.open)
   const boardOpen = usePins((s) => s.open)
@@ -183,21 +182,36 @@ export default function AdaptiveQuality() {
      and it renders whenever App does (view, power, paper, shelf changes):
      without this, the OS view's 1.0 cap and every step down lasted only
      until the next such render, which put the canvas straight back at
-     the display ratio. */
+     the display ratio.
+
+     It is held at the DOOR, not cleaned up afterwards. Losing the
+     argument and winning the rematch still costs two full drawing-buffer
+     reallocations, and on a Retina panel reading the OS those are
+     2880x1800 each: ~140 ms of frozen main thread, landing on the render
+     that flips power to 'desktop' — i.e. the moment the OS appears,
+     right after the click that is the whole point of the site. So the
+     wanted ratio is imposed on `setDpr` itself: the prop's value never
+     reaches the store, R3F's own "did the dpr change?" test sees no
+     change, and no resize happens at all. The subscription below stays
+     as a backstop for anything that writes viewport.dpr directly. */
   const store = useStore()
   const want = useRef(0)
   const place = (dpr: number) => {
     want.current = dpr
-    setDpr(dpr)
+    store.getState().setDpr(dpr)
   }
-  useEffect(
-    () =>
-      store.subscribe((s) => {
-        const w = want.current
-        if (w > 0 && Math.abs(s.viewport.dpr - w) > 1e-6) s.setDpr(w)
-      }),
-    [store],
-  )
+  useEffect(() => {
+    const raw = store.getState().setDpr
+    store.setState({ setDpr: (dpr) => raw(want.current > 0 ? want.current : dpr) })
+    const off = store.subscribe((s) => {
+      const w = want.current
+      if (w > 0 && Math.abs(s.viewport.dpr - w) > 1e-6) s.setDpr(w)
+    })
+    return () => {
+      off()
+      store.setState({ setDpr: raw })
+    }
+  }, [store])
 
   const apply = () => place(dprFor(view, textView, rung.current, top))
 
@@ -224,8 +238,8 @@ export default function AdaptiveQuality() {
   // properly by the frame loop below)
   useEffect(() => {
     want.current = dprFor(view, textView, Math.min(rung.current, top), top)
-    setDpr(want.current)
-  }, [view, textView, top, setDpr])
+    store.getState().setDpr(want.current)
+  }, [view, textView, top, store])
 
   const move = (dir: 'up' | 'down', to: number) => {
     if (to === rung.current) return
