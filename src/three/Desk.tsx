@@ -15,6 +15,7 @@ import {
   type MeshBasicMaterial,
 } from 'three'
 import { identity } from '../data/resume'
+import { device } from '../device'
 import { useSystem } from '../os/store'
 import { playClick } from '../os/sound'
 import Clickable from './Clickable'
@@ -26,6 +27,7 @@ import {
   makeLabelLines,
   makeSoftCircle,
   mulberry,
+  texScale,
 } from './textures'
 import {
   brushedMetalMaps,
@@ -69,6 +71,15 @@ const GROMMETS: [number, number][] = [
   [-0.665, -0.3],
   [0.25, -0.3],
 ]
+
+/* Side of the desktop's baked contact-shadow target. Same trade as the
+   floor's in Room.tsx: the bake is a depth pass plus four blur passes
+   over a square target, so halving the side quarters both the work and
+   the VRAM, while drei's UV-space blur keeps the softness identical.
+
+   Desk: exactly 512, as before. Phone: 256. Read once at module scope —
+   see the note on CONTACT_RES in Room.tsx. */
+const CONTACT_RES = device().lite ? 256 : 512
 
 interface DeskGeo {
   top: BufferGeometry
@@ -246,7 +257,7 @@ function DeskBody() {
           frames={1}
           position={[0, DESK_TOP + 0.0005, 0]}
           scale={[DESK.w, DESK.d]}
-          resolution={512}
+          resolution={CONTACT_RES}
           blur={1.6}
           far={0.45}
           opacity={0.5}
@@ -455,7 +466,11 @@ function buildMug(): { body: BufferGeometry; chai: BufferGeometry } {
     a faint splash. */
 function makeRingStain(): CanvasTexture {
   const S = 256
-  const ctx = makeCanvas(S, S)
+  // rings and drips, drawn entirely through the 2D API in design pixels
+  // (the translate below rides the same transform), so the lite scale is
+  // exact. Desk 256², phone 128² — and it is a soft brown smudge either
+  // way.
+  const ctx = makeCanvas(S, S, false, texScale())
   const rand = mulberry(77)
   ctx.clearRect(0, 0, S, S)
   ctx.translate(S / 2, S / 2)

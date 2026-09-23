@@ -126,3 +126,47 @@
     display: none;
   }
 }
+
+/* =====================================================================
+   PHONE TIER
+   ---------------------------------------------------------------------
+   Scoped to `.os-root[data-tier='phone']` (SoubhikOS.tsx, from
+   src/device.ts); a desk is data-tier="desk" and matches none of it.
+
+   These layers are tuned in logical px, and on a phone the glass
+   composites the 1024px surface at ~0.359x — so a 3px scanline cycle
+   arrives as 1.08 CSS px and the 3px RGB mask lands under a single
+   pixel. Neither reads as texture at that size; they read as the grey
+   film over the text that we came here to lift.
+   ===================================================================== */
+
+/* the scanlines double with the type, so a 32px glyph still gets the
+   same five-or-so lines across it that a 16px glyph gets on the desk */
+.os-root[data-tier='phone'] .crt-scanlines {
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 4px,
+    color-mix(in srgb, var(--term-bg) 22%, transparent) 4px,
+    color-mix(in srgb, var(--term-bg) 22%, transparent) 6px
+  );
+}
+
+/* the phosphor mask is a 1px-stripe effect. There is no 1px here to
+   put it on — it can only average out into a tint, so it sits this one
+   out and lets the scanlines carry the tube on their own. */
+.os-root[data-tier='phone'] .crt-mask {
+  display: none;
+}
+
+/* the corner falloff costs a small screen its outermost text: pull the
+   vignette back to the very edge and take some weight out of it */
+.os-root[data-tier='phone'] .crt-vignette {
+  background: radial-gradient(
+    ellipse 82% 78% at 50% 50%,
+    transparent 70%,
+    color-mix(in srgb, var(--term-bg) 24%, transparent) 92%,
+    color-mix(in srgb, var(--term-bg) 46%, transparent) 100%
+  );
+  box-shadow: inset 0 0 40px color-mix(in srgb, var(--term-green) 6%, transparent);
+}

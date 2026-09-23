@@ -27,6 +27,7 @@ import {
 } from 'three'
 import { useSystem } from '../os/store'
 import { playClick } from '../os/sound'
+import { device } from '../device'
 import { useWorld } from '../world'
 import Clickable from './Clickable'
 import { WINDOW } from './layout'
@@ -209,6 +210,22 @@ function makeShaftGeometry(distance: number): CylinderGeometry {
 }
 
 const SHAFT_DISTANCE = 2.4
+
+/* How bright the shaft ever gets — and, because the mesh is only drawn
+   while that number is above zero, whether it is drawn at all.
+
+   The cone is a big additive transparent surface at renderOrder 40, so
+   every pixel of it is read-modify-write on top of a room that has
+   already been shaded: pure overdraw, and a phone is fill-bound long
+   before it is shader-bound. Dimming it would not help — the fragments
+   still get rasterised and blended — so on a phone the peak goes to 0
+   and the mesh drops out of the draw list entirely.
+
+   Desk: 0.55, exactly the constant the per-frame opacity expression
+   carried before this existed. Phone: 0. */
+function shaftPeak(): number {
+  return device().lite ? 0 : 0.55
+}
 
 /* =====================================================================
    The outside: painted layers behind the hole
@@ -969,12 +986,14 @@ function RoomWindowBody({ wood }: { wood: WoodMaps }) {
        the light drifts (never touch castShadow here — that recompiles
        every lit material) */
 
-    /* the shaft: day only, dies in the air before the rug */
-    const showShaft = day > 0.02
+    /* the shaft: day only, dies in the air before the rug (and never on
+       a phone, where its peak is 0 — see shaftPeak) */
+    const peak = shaftPeak()
+    const showShaft = day > 0.02 && peak > 0
     shaft.current.visible = showShaft
     if (showShaft) {
       const u = (shaft.current.material as ShaderMaterial).uniforms
-      u.opacity.value = 0.55 * day * (1 - 0.6 * rain) * (1 - 0.85 * closed)
+      u.opacity.value = peak * day * (1 - 0.6 * rain) * (1 - 0.85 * closed)
       ;(u.lightColor.value as Color).copy(sunColor)
       shaft.current.getWorldPosition(u.spotPosition.value as Vector3)
       shaft.current.lookAt(target.current.getWorldPosition(scratch.v))

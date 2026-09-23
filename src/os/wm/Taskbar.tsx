@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useDevice } from '../../device'
 import { useSystem, useWindows, useActiveWindowId } from '../store'
 import { getApp } from '../registry'
 import { AppIcon } from '../icons/AppIcon'
@@ -18,6 +19,9 @@ export default function Taskbar() {
   const startOpen = useWindows((s) => s.startOpen)
   const activeId = useActiveWindowId()
   const muted = useSystem((s) => s.muted)
+  /* the bar is 30px tall on a desk and 60px on a phone (shell.css), so
+     its 16px icons double with it — an exact 2x of a 16x16 grid */
+  const icon = useDevice((s) => (s.tier === 'phone' ? 32 : 16))
 
   const onStartPointerDown = () => {
     // Opening happens on pointerdown; when the menu is open its backdrop
@@ -49,7 +53,7 @@ export default function Taskbar() {
         aria-haspopup="menu"
         aria-expanded={startOpen}
       >
-        <AppIcon name="os-logo" size={16} />
+        <AppIcon name="os-logo" size={icon} />
         <b>Start</b>
       </button>
 
@@ -65,7 +69,7 @@ export default function Taskbar() {
               className={`tb-win${pressed ? ' pressed' : ''}`}
               onClick={() => onWindowButton(w.id)}
             >
-              <AppIcon name={app?.icon ?? 'default'} size={16} />
+              <AppIcon name={app?.icon ?? 'default'} size={icon} />
               <span>{w.title}</span>
             </button>
           )

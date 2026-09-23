@@ -1145,3 +1145,521 @@
   flex: none;
   margin-left: auto;
 }
+
+/* =====================================================================
+   PHONE TIER — the apps
+   ---------------------------------------------------------------------
+   Scoped, without exception, to `.os-root[data-tier='phone']` (written
+   by SoubhikOS.tsx from src/device.ts). A desk gets data-tier="desk"
+   and matches nothing here. No media queries: these apps live inside a
+   1024px div under a CSS-3D transform, where the viewport's width is
+   not the width they are laid out against.
+
+   Same arithmetic as the PHONE TIER block in wm/shell.css: the glass
+   composites the 1024px surface at ~0.359x on a 390px phone, so every
+   type size doubles and only doubles — 8 -> 16, 16 -> 32, 24 -> 48,
+   32 -> 64 — because these are pixel faces on a whole-pixel grid and a
+   fractional scale is the blur we are here to remove. Padding, column
+   widths and pixel-art sizes follow at 2x so the layouts still hold
+   their shape; windows are full-bleed 1024x708 on a phone, so there is
+   twice the room to spend.
+   ===================================================================== */
+
+/* ---------- type ---------- */
+.os-root[data-tier='phone'] .app-menu-item,
+.os-root[data-tier='phone'] .app-status > span,
+.os-root[data-tier='phone'] .app-toast,
+.os-root[data-tier='phone'] .abt-tab,
+.os-root[data-tier='phone'] .abt-title,
+.os-root[data-tier='phone'] .abt-loc,
+.os-root[data-tier='phone'] .abt-kv,
+.os-root[data-tier='phone'] .abt-summary,
+.os-root[data-tier='phone'] .abt-edu-degree,
+.os-root[data-tier='phone'] .abt-edu-period,
+.os-root[data-tier='phone'] .abt-edu-school,
+.os-root[data-tier='phone'] .abt-score,
+.os-root[data-tier='phone'] .abt-cert,
+.os-root[data-tier='phone'] .abt-cert-note,
+.os-root[data-tier='phone'] .prj-address,
+.os-root[data-tier='phone'] .prj-cat,
+.os-root[data-tier='phone'] .prj-cat .count,
+.os-root[data-tier='phone'] .prj-item,
+.os-root[data-tier='phone'] .prj-tagline,
+.os-root[data-tier='phone'] .prj-badge,
+.os-root[data-tier='phone'] .prj-bullets,
+.os-root[data-tier='phone'] .xp-company,
+.os-root[data-tier='phone'] .xp-period,
+.os-root[data-tier='phone'] .xp-role,
+.os-root[data-tier='phone'] .xp-loc,
+.os-root[data-tier='phone'] .xp-bullets,
+.os-root[data-tier='phone'] .chip-btn,
+.os-root[data-tier='phone'] .skl-root,
+.os-root[data-tier='phone'] .skl-row,
+.os-root[data-tier='phone'] .skl-count,
+.os-root[data-tier='phone'] .skl-status-name,
+.os-root[data-tier='phone'] .skl-status-ok,
+.os-root[data-tier='phone'] .skl-status-meta,
+.os-root[data-tier='phone'] .skl-empty,
+.os-root[data-tier='phone'] .ctc-row > label,
+.os-root[data-tier='phone'] .ctc-modem-title,
+.os-root[data-tier='phone'] .ctc-modem-line,
+.os-root[data-tier='phone'] .awd-banner-title,
+.os-root[data-tier='phone'] .awd-title,
+.os-root[data-tier='phone'] .awd-detail,
+.os-root[data-tier='phone'] .wlc-type,
+.os-root[data-tier='phone'] .wlc-blurb,
+.os-root[data-tier='phone'] .wlc-launch,
+.os-root[data-tier='phone'] .wlc-check,
+.os-root[data-tier='phone'] .wlc-hint {
+  font-size: 32px;
+}
+.os-root[data-tier='phone'] .prj-name,
+.os-root[data-tier='phone'] .wlc-banner-title {
+  font-size: 48px;
+}
+.os-root[data-tier='phone'] .abt-name {
+  font-size: 64px;
+}
+/* Silkscreen's other native size, not 4x of nothing */
+.os-root[data-tier='phone'] .skl-toggle {
+  font-size: 16px;
+}
+
+/* ---------- shared app scaffolding ---------- */
+.os-root[data-tier='phone'] .app-toolbar {
+  gap: 12px;
+  padding: 10px 12px;
+}
+.os-root[data-tier='phone'] .app-toolbar .btn {
+  min-width: 0; /* shell.css gives .btn a 128px floor for dialogs */
+  gap: 12px;
+  padding: 6px 20px;
+}
+.os-root[data-tier='phone'] .app-toolbar .btn:active {
+  padding: 7px 19px 5px 21px;
+}
+.os-root[data-tier='phone'] .tool-sep {
+  width: 4px;
+  margin: 2px 4px;
+}
+.os-root[data-tier='phone'] .app-menubar {
+  padding: 2px 8px;
+  gap: 4px;
+}
+.os-root[data-tier='phone'] .app-menu-item {
+  padding: 4px 16px;
+}
+.os-root[data-tier='phone'] .app-status {
+  gap: 8px;
+  padding: 6px 8px 8px;
+}
+.os-root[data-tier='phone'] .app-status > span {
+  padding: 4px 16px;
+}
+.os-root[data-tier='phone'] .app-toast {
+  bottom: 72px;
+  padding: 12px 28px;
+}
+.os-root[data-tier='phone'] .field {
+  padding: 8px 12px;
+}
+/* project art scanlines are a 3px cycle; at 0.359x that is one CSS px
+   of moire. Double the cycle so it still reads as a scanline. */
+.os-root[data-tier='phone'] .proj-art::after {
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(8, 12, 10, 0.16) 0 2px,
+    transparent 2px 6px
+  );
+}
+
+/* ---------- AboutMe ---------- */
+.os-root[data-tier='phone'] .abt-tabs {
+  gap: 4px;
+  padding: 12px 16px 0;
+}
+.os-root[data-tier='phone'] .abt-tab {
+  padding: 8px 24px 6px;
+}
+.os-root[data-tier='phone'] .abt-tab.active {
+  padding-bottom: 10px;
+  margin-top: -4px;
+}
+.os-root[data-tier='phone'] .abt-page {
+  margin: 0 16px;
+  padding: 20px;
+}
+.os-root[data-tier='phone'] .abt-id {
+  gap: 24px;
+}
+.os-root[data-tier='phone'] .abt-portrait {
+  width: 208px;
+  height: 208px;
+  padding: 10px;
+}
+/* the location LED is an 8px inline-styled span in AboutMe.tsx; min-*
+   is the one way past an inline width */
+.os-root[data-tier='phone'] .abt-loc > span {
+  min-width: 16px;
+  min-height: 16px;
+}
+.os-root[data-tier='phone'] .abt-kv {
+  grid-template-columns: 320px 1fr;
+  gap: 6px 20px;
+  margin-top: 20px;
+}
+.os-root[data-tier='phone'] .abt-summary {
+  margin-top: 20px;
+  padding: 14px 18px;
+  min-height: 128px;
+}
+.os-root[data-tier='phone'] .abt-edu {
+  padding: 18px 22px;
+  margin-bottom: 14px;
+}
+.os-root[data-tier='phone'] .abt-score {
+  padding: 2px 16px;
+  margin-top: 10px;
+}
+.os-root[data-tier='phone'] .abt-cert {
+  gap: 18px;
+  padding: 14px 18px;
+  margin-bottom: 12px;
+}
+.os-root[data-tier='phone'] .abt-medal {
+  width: 28px;
+  height: 28px;
+}
+.os-root[data-tier='phone'] .abt-footer {
+  gap: 14px;
+  padding: 14px 16px;
+}
+
+/* ---------- Projects ---------- */
+.os-root[data-tier='phone'] .prj-address {
+  gap: 14px;
+  padding: 6px 16px;
+}
+.os-root[data-tier='phone'] .prj-body {
+  gap: 8px;
+  padding: 0 8px;
+}
+.os-root[data-tier='phone'] .prj-side {
+  width: 312px;
+  gap: 4px;
+  padding: 10px 8px;
+}
+.os-root[data-tier='phone'] .prj-cat {
+  gap: 12px;
+  padding: 10px 12px;
+}
+.os-root[data-tier='phone'] .prj-main {
+  padding: 18px;
+}
+.os-root[data-tier='phone'] .prj-grid {
+  grid-template-columns: repeat(auto-fill, minmax(208px, 1fr));
+  gap: 8px 0;
+  margin-bottom: 20px;
+}
+.os-root[data-tier='phone'] .prj-item {
+  gap: 10px;
+  padding: 14px 4px 12px;
+}
+.os-root[data-tier='phone'] .prj-item-thumb {
+  width: 112px;
+  height: 80px;
+}
+.os-root[data-tier='phone'] .prj-detail {
+  margin: 0 8px;
+  padding: 20px 24px;
+}
+.os-root[data-tier='phone'] .prj-hero {
+  height: 264px;
+  margin-bottom: 20px;
+}
+.os-root[data-tier='phone'] .prj-badges {
+  gap: 12px;
+  margin: 16px 0 6px;
+}
+.os-root[data-tier='phone'] .prj-badge {
+  padding: 3px 18px;
+}
+.os-root[data-tier='phone'] .prj-section {
+  margin-top: 20px;
+}
+.os-root[data-tier='phone'] .prj-bullets {
+  padding-left: 36px;
+}
+.os-root[data-tier='phone'] .prj-bullets li {
+  margin-bottom: 12px;
+}
+.os-root[data-tier='phone'] .prj-links {
+  gap: 16px;
+  margin-top: 18px;
+}
+
+/* ---------- Experience ---------- */
+.os-root[data-tier='phone'] .xp-scroll {
+  margin: 8px 10px;
+  padding: 24px 26px 14px;
+}
+.os-root[data-tier='phone'] .xp-entry {
+  gap: 24px;
+}
+.os-root[data-tier='phone'] .xp-rail {
+  width: 28px;
+}
+.os-root[data-tier='phone'] .xp-led {
+  width: 24px;
+  height: 24px;
+  margin-top: 10px;
+}
+.os-root[data-tier='phone'] .xp-line {
+  width: 4px;
+}
+.os-root[data-tier='phone'] .xp-card {
+  margin-bottom: 30px;
+  padding: 18px 22px;
+}
+.os-root[data-tier='phone'] .xp-bullets {
+  padding-left: 32px;
+  margin-top: 14px;
+}
+.os-root[data-tier='phone'] .xp-bullets li {
+  margin-bottom: 8px;
+}
+.os-root[data-tier='phone'] .xp-chips {
+  gap: 8px;
+  margin-top: 14px;
+}
+.os-root[data-tier='phone'] .chip-btn {
+  padding: 3px 16px;
+}
+
+/* ---------- Skills ---------- */
+.os-root[data-tier='phone'] .skl-tree {
+  margin: 0 10px;
+  padding: 10px 8px;
+}
+.os-root[data-tier='phone'] .skl-root {
+  gap: 12px;
+  padding: 4px 8px;
+}
+.os-root[data-tier='phone'] .skl-row {
+  gap: 12px;
+  padding: 8px;
+}
+.os-root[data-tier='phone'] .skl-row.group {
+  margin-left: 28px;
+}
+.os-root[data-tier='phone'] .skl-row.leaf {
+  margin-left: 88px;
+}
+.os-root[data-tier='phone'] .skl-toggle {
+  width: 26px;
+  height: 26px;
+}
+.os-root[data-tier='phone'] .skl-leaf-dot {
+  width: 16px;
+  height: 16px;
+}
+/* a straight 2x of the 148px floor would take 296 of the window's 708
+   and leave the device tree three rows tall, so the status panel keeps
+   a little less than double and scrolls if a driver has a lot to say */
+.os-root[data-tier='phone'] .skl-status {
+  min-height: 248px;
+  margin: 8px 10px 0;
+  padding: 14px 18px;
+  overflow: auto;
+}
+.os-root[data-tier='phone'] .skl-status-btns {
+  gap: 14px;
+}
+.os-root[data-tier='phone'] .skl-scanbar {
+  height: 28px;
+  margin-top: 14px;
+}
+
+/* ---------- Contact ---------- */
+.os-root[data-tier='phone'] .ctc-form {
+  gap: 12px;
+  padding: 14px 18px 8px;
+}
+.os-root[data-tier='phone'] .ctc-row {
+  grid-template-columns: 176px 1fr;
+  gap: 16px;
+}
+.os-root[data-tier='phone'] .ctc-modem-box {
+  width: 640px;
+  padding: 6px;
+}
+.os-root[data-tier='phone'] .ctc-modem-title {
+  height: 40px;
+  padding: 0 12px;
+}
+.os-root[data-tier='phone'] .ctc-modem-body {
+  padding: 20px 24px 24px;
+}
+.os-root[data-tier='phone'] .ctc-modem-line {
+  min-height: 44px;
+}
+.os-root[data-tier='phone'] .ctc-modem-bar {
+  height: 32px;
+  margin-top: 18px;
+  gap: 4px;
+  padding: 4px;
+}
+.os-root[data-tier='phone'] .ctc-modem-bar > i {
+  width: 28px;
+}
+
+/* ---------- Awards ---------- */
+.os-root[data-tier='phone'] .awd-banner {
+  gap: 18px;
+  margin: 10px 12px 0;
+  padding: 14px 20px;
+}
+.os-root[data-tier='phone'] .awd-scroll {
+  padding: 16px 12px 12px;
+}
+/* the shell's blanket only lifts icons that are UNDER 32; these two are
+   already above it, so they double by name (28 -> 56, 36 -> 72) */
+.os-root[data-tier='phone'] .awd-banner > span[aria-hidden='true'] {
+  min-width: 56px;
+  min-height: 56px;
+}
+.os-root[data-tier='phone'] .awd-card > span[aria-hidden='true'] {
+  min-width: 72px;
+  min-height: 72px;
+}
+/* two columns of 32px text inside 1024px is 26 characters a line —
+   the trophy case stacks instead */
+.os-root[data-tier='phone'] .awd-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+.os-root[data-tier='phone'] .awd-card {
+  gap: 12px;
+  padding: 18px;
+  border-top-width: 6px;
+}
+.os-root[data-tier='phone'] .awd-certs {
+  margin-top: 20px;
+}
+.os-root[data-tier='phone'] .awd-certs-head {
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+/* ---------- Welcome ---------- */
+.os-root[data-tier='phone'] .wlc-banner {
+  gap: 22px;
+  padding: 20px 24px;
+}
+/* likewise above the 32px floor already. The banner logo doubles (40 ->
+   80); the launcher icons stop at 48, because a full 2x adds 80px of
+   button and pushes the fifth door off the bottom of the window. */
+.os-root[data-tier='phone'] .wlc-banner > span[aria-hidden='true'] {
+  min-width: 80px;
+  min-height: 80px;
+}
+.os-root[data-tier='phone'] .wlc-launch > span[aria-hidden='true'] {
+  min-width: 48px;
+  min-height: 48px;
+}
+.os-root[data-tier='phone'] .wlc-body {
+  gap: 18px;
+  padding: 20px 24px 14px;
+}
+/* Text beside a 336px launcher column leaves neither enough room at
+   32px, so the Welcome window reads top to bottom — and the launchers
+   go FIRST. They are the doors into the resume, and stacked under six
+   lines of 32px blurb the first one would be the only one on screen. */
+.os-root[data-tier='phone'] .wlc-cols {
+  flex-direction: column-reverse;
+  gap: 20px;
+}
+.os-root[data-tier='phone'] .wlc-text {
+  gap: 18px;
+}
+.os-root[data-tier='phone'] .wlc-launchers {
+  width: auto;
+  align-self: stretch;
+  gap: 12px;
+}
+.os-root[data-tier='phone'] .wlc-launch {
+  gap: 16px;
+  padding: 8px 16px;
+}
+.os-root[data-tier='phone'] .wlc-launch:active {
+  padding: 9px 15px 7px 17px;
+}
+.os-root[data-tier='phone'] .wlc-type {
+  min-height: 48px;
+}
+.os-root[data-tier='phone'] .wlc-caret {
+  width: 18px;
+  height: 30px;
+  margin-left: 4px;
+  vertical-align: -4px;
+}
+.os-root[data-tier='phone'] .wlc-check {
+  gap: 16px;
+}
+.os-root[data-tier='phone'] .wlc-footer {
+  gap: 20px;
+  padding: 12px 24px 18px;
+}
+
+/* ---------- Terminal & Snake (their CSS is owned elsewhere; only the
+     type scale is touched, from here, under the same phone scope) ---- */
+.os-root[data-tier='phone'] .term-scroll {
+  font-size: 36px; /* 2x of 18 — 28 columns, which is a phone terminal */
+  padding: 14px 18px 18px;
+}
+.os-root[data-tier='phone'] .snake-hud,
+.os-root[data-tier='phone'] .snake-cred {
+  font-size: 34px;
+}
+.os-root[data-tier='phone'] .snake-sub,
+.os-root[data-tier='phone'] .snake-newhi,
+.os-root[data-tier='phone'] .snake-blink {
+  font-size: 38px;
+}
+/* .snake-big stays at 44: it is already well clear of the grid, and
+   doubling it walks "GAME OVER" straight out of the cabinet. */
+
+/* ---------------------------------------------------------------------
+   Resume — the one window that has to survive the trip
+   ---------------------------------------------------------------------
+   The pages are US Letter vector (612x792 pt). Fit one to the window
+   and it is 1012 logical px = 363 CSS px of phone screen, on which the
+   9.5pt body copy measures 9.5/792 of the height — under 6 px. There is
+   no styling your way out of that: the page has to get bigger than the
+   window, and the window has to pan.
+
+   2560px is the number. At the 0.359x the glass composites at, that is
+   ~920 CSS px of page, which lands the body copy at ~14 px — the size a
+   phone browser gives ordinary web text. So the viewer behaves like
+   every PDF reader on a phone: zoomed in, scrolling both ways, both
+   pages on one strip. Anyone who would rather have the real file finds
+   Download and "Open in new tab" in the toolbar right above, at 2x.
+
+   `image-rendering: auto` on .res-page above is load-bearing and stays:
+   .os-root inherits `pixelated`, which nearest-samples the page and
+   eats whole rows out of the glyphs.
+   --------------------------------------------------------------------- */
+.os-root[data-tier='phone'] .res-pages {
+  margin: 0 8px;
+  padding: 18px;
+  gap: 24px;
+  align-items: flex-start;
+  overflow: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-x pan-y pinch-zoom;
+}
+.os-root[data-tier='phone'] .res-page {
+  flex: none;
+  width: 2560px;
+  max-width: none;
+}

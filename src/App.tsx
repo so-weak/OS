@@ -10,6 +10,7 @@ import {
 import { createPortal } from 'react-dom'
 import { useSystem } from './os/store'
 import { useRoute } from './router'
+import { device, useDevice, watchDevice } from './device'
 import { useLibrary } from './three/libraryState'
 import { useRoom } from './three/roomState'
 import { identity } from './data/resume'
@@ -29,9 +30,12 @@ import './styles/hud.css'
    loads no three.js, and the room never loads the catalogue's art
    until you walk over to the shelf.
 
-   A third place, reluctantly: the pocket edition (src/Pocket.tsx) —
-   where the room cannot run (phone width, no WebGL2, or the scene
-   throwing) the resume is served as a plain page instead.
+   A third place, on request or in failure: the pocket edition
+   (src/Pocket.tsx). It used to be where every phone landed; phones walk
+   into the room now, so it is what is left when the room genuinely
+   cannot run (no WebGL2, or the scene throwing) and what a visitor gets
+   when they tap the little door out of the room and just want the
+   resume. Never a width gate.
    ===================================================================== */
 
 /* The room's chunk is ~1.3 MB. Its download starts at module
@@ -98,37 +102,11 @@ export default function App() {
 }
 
 /* ---------- the gate: can the room run here? ----------
-   Width, not pointer type — an iPad runs the room fine. The "enter the
-   room anyway" flag lives for the tab session only. */
-const ANYWAY_KEY = 'soubhikos-room-anyway'
-let anywayThisSession = false
-
-function bypassed(): boolean {
-  if (anywayThisSession) return true
-  try {
-    return window.sessionStorage.getItem(ANYWAY_KEY) === '1'
-  } catch {
-    return false
-  }
-}
-
-function rememberAnyway(): void {
-  anywayThisSession = true
-  try {
-    window.sessionStorage.setItem(ANYWAY_KEY, '1')
-  } catch {
-    /* private mode — the module flag carries it */
-  }
-}
-
-function narrow(): boolean {
-  try {
-    return window.matchMedia('(max-width: 700px)').matches
-  } catch {
-    return false // no matchMedia — assume a desk
-  }
-}
-
+   One question, and it is no longer about size. A phone renders the
+   room; it just renders it differently (src/device.ts decides how the
+   room dresses for the machine it is on). So the only thing that can
+   turn a visitor away is a browser with no WebGL2 — and the only other
+   way to the pocket edition is to ask for it. */
 function probe(): PocketReason | null {
   try {
     const gl = document.createElement('canvas').getContext('webgl2')
@@ -138,9 +116,37 @@ function probe(): PocketReason | null {
   } catch {
     return 'webgl'
   }
-  if (bypassed()) return null
-  if (narrow()) return 'pocket'
   return null
+}
+
+/* The escape hatch, inverted. It used to be "let me in anyway" for the
+   phones the width gate had turned away; now that they are already in,
+   it runs the other way — someone on a small screen who came for the
+   resume and not the furniture asks for the plain page, and the tab
+   remembers it until they walk back in. Read on phones and tablets
+   only: a desk has no way to set this flag and no business honouring
+   one, so `prefersPocket()` is a hard false at 1440x900. */
+const POCKET_KEY = 'soubhikos-pocket'
+let pocketThisSession = false
+
+function prefersPocket(): boolean {
+  if (device().tier === 'desk') return false
+  if (pocketThisSession) return true
+  try {
+    return window.sessionStorage.getItem(POCKET_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function rememberPocket(on: boolean): void {
+  pocketThisSession = on
+  try {
+    if (on) window.sessionStorage.setItem(POCKET_KEY, '1')
+    else window.sessionStorage.removeItem(POCKET_KEY)
+  } catch {
+    /* private mode — the module flag carries it */
+  }
 }
 
 /** The landing URL is the room (not /library). Mirrors router.parse. */
@@ -151,23 +157,32 @@ function landsInRoom(): boolean {
   return path.replace(/^\/+/, '').split('/')[0] !== 'library'
 }
 
+/* the store follows resize and orientation from here on; idempotent,
+   and on a desk that never changes tier it changes nothing */
+watchDevice()
+
 /* Kick off the room's download right now when this visit is headed
-   for it. Cheap checks only — the WebGL probe waits for Room, and a
-   phone landing on the pocket edition downloads no three.js. A failed
-   download surfaces through lazy() into SceneBoundary, as before. */
-if (landsInRoom() && (bypassed() || !narrow())) {
+   for it. Cheap checks only — the WebGL probe waits for Room. A visitor
+   who asked for the plain page earlier in this tab is not headed for
+   the room, so they still download no three.js; on a desk that test is
+   a hard false, so the desk kicks off exactly as it always did. A
+   failed download surfaces through lazy() into SceneBoundary, as
+   before. */
+if (landsInRoom() && !prefersPocket()) {
   sceneModule().catch(() => {})
 }
 
 function Room() {
-  const [pocket, setPocket] = useState<PocketReason | null>(probe)
+  const [pocket, setPocket] = useState<PocketReason | null>(
+    () => probe() ?? (prefersPocket() ? 'chose' : null),
+  )
 
-  if (pocket === 'pocket') {
+  if (pocket === 'chose') {
     return (
       <Pocket
-        reason="pocket"
-        onEnterAnyway={() => {
-          rememberAnyway()
+        reason="chose"
+        onEnterRoom={() => {
+          rememberPocket(false)
           setPocket(null)
         }}
       />
@@ -177,7 +192,12 @@ function Room() {
 
   return (
     <SceneBoundary>
-      <RoomView />
+      <RoomView
+        onStepOut={() => {
+          rememberPocket(true)
+          setPocket('chose')
+        }}
+      />
     </SceneBoundary>
   )
 }
@@ -201,7 +221,7 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
   }
 }
 
-function RoomView() {
+function RoomView({ onStepOut }: { onStepOut: () => void }) {
   const view = useSystem((s) => s.view)
   const power = useSystem((s) => s.power)
   const zoomOut = useSystem((s) => s.zoomOut)
@@ -254,14 +274,30 @@ function RoomView() {
       </Suspense>
       {/* mounts at the reveal, so its identity clock starts with the room */}
       {revealed && <HudHint visible={hudVisible} power={power} />}
+      {revealed && <PocketDoor visible={hudVisible} onLeave={onStepOut} />}
       <RoomVeil />
 
-      {view === 'screen' && (
-        <button className="hud-back t-term" onClick={zoomOut}>
-          ◂ step back &nbsp;<span className="hud-key">ESC</span>
-        </button>
-      )}
+      {view === 'screen' && <StepBack onBack={zoomOut} />}
     </>
+  )
+}
+
+/** The way out of the CRT close-up. The key chip is a promise about a
+    keyboard, so a finger does not get told about a key it has no way
+    to press — everything with a real Esc keeps the button it had,
+    character for character. */
+function StepBack({ onBack }: { onBack: () => void }) {
+  const touch = useDevice((s) => s.pointer) === 'touch'
+  return (
+    <button className="hud-back t-term" onClick={onBack}>
+      {touch ? (
+        <>◂ step back</>
+      ) : (
+        <>
+          ◂ step back &nbsp;<span className="hud-key">ESC</span>
+        </>
+      )}
+    </button>
   )
 }
 
@@ -269,6 +305,9 @@ function RoomView() {
     power-aware hint. */
 function HudHint({ visible, power }: { visible: boolean; power: string }) {
   const [identityPhase, setIdentityPhase] = useState(true)
+  /* a finger cannot click. Mouse copy is the string it always was —
+     only a coarse pointer takes the other branch. */
+  const verb = useDevice((s) => s.pointer) === 'touch' ? 'tap' : 'click'
   useEffect(() => {
     const t = window.setTimeout(() => setIdentityPhase(false), IDENTITY_MS)
     return () => window.clearTimeout(t)
@@ -285,9 +324,29 @@ function HudHint({ visible, power }: { visible: boolean; power: string }) {
   return (
     <div className="hud-hint t-term">
       {power === 'off'
-        ? 'click the monitor — the resume is inside'
-        : 'SoubhikOS is running — click the monitor to lean in'}
+        ? `${verb} the monitor — the resume is inside`
+        : `SoubhikOS is running — ${verb} the monitor to lean in`}
     </div>
+  )
+}
+
+/** The door out of the room, for a visitor who came for the resume and
+    not the furniture. It wears the room's own HUD button (.hud-back),
+    trimmed down and parked in the free corner — nothing new floating
+    over the desk. Portalled to <body> for the reason LibraryHud is:
+    R3F raycasts on every pointer event that lands inside #root, so a
+    button in there would both fire and poke the room. `visible` is the
+    hint's own gate, which the shelf, the papers and the pin board (it
+    raises paperUp) all close — so the corner is never contested. Never
+    rendered on a desk: the tier check is false there and this is null. */
+function PocketDoor({ visible, onLeave }: { visible: boolean; onLeave: () => void }) {
+  const tier = useDevice((s) => s.tier)
+  if (tier === 'desk' || !visible) return null
+  return createPortal(
+    <button type="button" className="hud-back pocket-door t-term" onClick={onLeave}>
+      just the resume ▸
+    </button>,
+    document.body,
   )
 }
 

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useFrame, useStore, useThree } from '@react-three/fiber'
 import type { WebGLRenderer } from 'three'
+import { useDevice } from '../device'
 import { useLoad } from '../loadProgress'
 import { useSystem } from '../os/store'
-import { useFrameGoverned } from './FrameGovernor'
+import { LITE_ACTIVE_HZ, useFrameGoverned } from './FrameGovernor'
 import { useLibrary } from './libraryState'
 import { usePins } from './pinState'
 
@@ -49,14 +50,30 @@ import { usePins } from './pinState'
 
    The monitor only starts once the room has been revealed (SceneReady's
    warm-up frames are not drawn and must not count as a slow machine).
+
+   LITE (phones) — the ceiling moves, the ladder does not. A phone
+   reports devicePixelRatio 3 and carries a fraction of a laptop's fill
+   rate, so honouring the display's own ratio would ask a mobile GPU for
+   ~9x the pixels of a 1x canvas for a room that already pays for ten
+   lights per fragment. On lite the ceiling drops to 1.25 and the ladder
+   starts at 1.0 and has to earn the rest — the same meter, the same
+   hysteresis, a lower roof. This is the highest-leverage dial on a
+   phone by a wide margin: everything else in the frame scales with the
+   pixel count this number sets.
    ===================================================================== */
 
 /** the ladder of pixel ratios */
 const STEPS = [0.75, 1, 1.25, 1.5, 1.75, 2]
 /** never above this, whatever the display */
 const MAX_DPR = 2
+/** lite: never above this, whatever the phone claims its ratio is */
+const LITE_MAX_DPR = 1.25
 /** where an unknown / integrated GPU starts */
 const SLOW_START_DPR = 1.25
+/** lite: where the ladder starts — a phone climbs to its ceiling, it is
+    never handed it (an iPhone reports "Apple GPU" and would otherwise
+    pass the fast-GPU probe and start at the top) */
+const LITE_START_DPR = 1
 /** cap while the OS is on screen */
 const SCREEN_DPR = 1
 /** extra rungs for the lettering views (library, cork board) */
@@ -83,6 +100,10 @@ const WINDOWS = 8
     its sharpness), ~4 s of headroom to climb back */
 const SUSTAIN_DOWN = 3
 const SUSTAIN_UP = 2
+/** lite: relief sooner (~4 s). On a desk a sag is usually another tab or
+    a lazy build and costing the room its sharpness for it would be
+    wrong; on a phone a sustained sag is simply the truth about the GPU. */
+const LITE_SUSTAIN_DOWN = 2
 
 function stepFor(dpr: number): number {
   let best = 0
@@ -124,6 +145,10 @@ export default function AdaptiveQuality() {
   const libraryOpen = useLibrary((s) => s.open)
   const boardOpen = usePins((s) => s.open)
   const revealed = useLoad((s) => s.revealed)
+  /* the one reactive read of the tier: a flip (a phone rotated, a desk
+     window dragged narrow) re-renders this component, which moves the
+     ceiling and re-seats the ladder below. Constant on the desk. */
+  const lite = useDevice((s) => s.lite)
   const [settled, setSettled] = useState(false)
   const frames = useRef(0)
   const sinceReveal = useRef(0)
@@ -137,10 +162,13 @@ export default function AdaptiveQuality() {
   const governed = useFrameGoverned()
 
   /** the highest rung this display can use */
-  const top = stepFor(Math.min(MAX_DPR, Math.max(1, window.devicePixelRatio || 1)))
-  const [startRung] = useState(() =>
-    isFastGpu(gl) ? top : Math.min(top, stepFor(SLOW_START_DPR)),
+  const top = stepFor(
+    Math.min(lite ? LITE_MAX_DPR : MAX_DPR, Math.max(1, window.devicePixelRatio || 1)),
   )
+  /** the GPU verdict is asked once — it cannot change under us */
+  const [fast] = useState(() => isFastGpu(gl))
+  const startRung =
+    fast && !lite ? top : Math.min(top, stepFor(lite ? LITE_START_DPR : SLOW_START_DPR))
   /** the rung the monitor has chosen for the room view */
   const rung = useRef(startRung)
   const lastMove = useRef<'up' | 'down' | null>(null)
@@ -188,9 +216,14 @@ export default function AdaptiveQuality() {
     if (frames.current >= SETTLE_FALLBACK) setSettled(true)
   })
 
-  // before the first drawn frame, and on every view change
+  /** the tier the current ladder was climbed for */
+  const laddersTier = useRef(lite)
+
+  // before the first drawn frame, and on every view change (and on a
+  // tier flip, which moves `top` under the rung — clamped here, re-seated
+  // properly by the frame loop below)
   useEffect(() => {
-    want.current = dprFor(view, textView, rung.current, top)
+    want.current = dprFor(view, textView, Math.min(rung.current, top), top)
     setDpr(want.current)
   }, [view, textView, top, setDpr])
 
@@ -223,8 +256,16 @@ export default function AdaptiveQuality() {
 
   const judge = (fps: number, hz: number) => {
     // 60 Hz: step down under 45 fps, up at (nearly) full rate;
-    // 120 Hz panels: 80 / 110
-    const [down, up] = hz > 100 ? [80, 110] : [45, 57]
+    // 120 Hz panels: 80 / 110.
+    // lite: the loop itself is capped at LITE_ACTIVE_HZ (FrameGovernor),
+    // so the bounds follow the CAP, not the panel — a 120 Hz phone
+    // holding its 30 Hz ceiling perfectly would otherwise be judged
+    // against 110 fps and walked to the floor for a sag that is ours.
+    const [down, up] = lite
+      ? [LITE_ACTIVE_HZ * 0.8, LITE_ACTIVE_HZ * 0.95]
+      : hz > 100
+        ? [80, 110]
+        : [45, 57]
     const st = streak.current
     const p = probe.current
     if (p) {
@@ -244,7 +285,7 @@ export default function AdaptiveQuality() {
     // lazy build or another tab must not cost the room its sharpness)
     if (fps < down) {
       st.good = 0
-      if (++st.bad < SUSTAIN_DOWN) return
+      if (++st.bad < (lite ? LITE_SUSTAIN_DOWN : SUSTAIN_DOWN)) return
     } else if (fps >= up) {
       st.bad = 0
       if (++st.good < SUSTAIN_UP) return
@@ -267,6 +308,24 @@ export default function AdaptiveQuality() {
   }
 
   useFrame(() => {
+    /* A tier flip changed the ceiling under a ladder that was climbed
+       for the other machine, so the ladder is re-seated at the new
+       tier's start and the meter re-learns: a 0.75 rung a phone earned
+       must not blur a window dragged back wide, and a 2.0 rung from the
+       desk must not land on a phone. Unreachable on the desk — `lite` is
+       constant there, so this never runs and every ref below keeps
+       exactly the value the desk path gave it. */
+    if (laddersTier.current !== lite) {
+      laddersTier.current = lite
+      rung.current = startRung
+      floor.current = top >= stepFor(1.5) ? stepFor(HIDPI_FLOOR_DPR) : 0
+      lastMove.current = null
+      reversals.current = 0
+      pinned.current = false
+      probe.current = null
+      streak.current.bad = streak.current.good = 0
+      apply()
+    }
     const m = meter.current
     if (!monitoring) {
       m.t0 = 0

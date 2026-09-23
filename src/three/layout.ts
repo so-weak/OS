@@ -6,6 +6,7 @@
 
 import { Euler, MathUtils, Vector3 } from 'three'
 import { CAM_FOV, GLASS_H, GLASS_W } from '../constants'
+import type { DeviceState } from '../device'
 
 /* ---------- desk ---------- */
 export const DESK_TOP = 0.742 // world y of the desk surface
@@ -87,6 +88,125 @@ export const ROOM_CAM_POS = new Vector3(1.07, 1.43, 2.12)
 export const ROOM_CAM_TARGET = new Vector3(-0.1, 0.72, -0.5)
 /** Where the camera boots up on first load (dollies into ROOM_CAM_POS). */
 export const INTRO_CAM_POS = new Vector3(1.55, 1.72, 2.6)
+
+/* ---------- framing the room on a small screen ----------
+   The three constants above are a photograph: they were composed by eye
+   in a 1440x900 window, and at that size they are the contract — the
+   regression harness diffs them pixel for pixel. `roomCamPose` returns
+   them verbatim for tier 'desk' and never touches the arithmetic below.
+
+   Everywhere else the lens has to be re-derived, because a fixed
+   vertical FOV keeps the frame's HEIGHT and throws its width away: on a
+   9:16 phone the desk shot covers 0.94 m across, barely wider than the
+   monitor, and the desk, the chair and the rug are all outside it.
+
+   The geometry is unforgiving. A frame covers `width / aspect` of world
+   height, always — so "fit the whole 2.1 m desk on a phone" also means
+   "show 4.5 m of floor and ceiling in a 2.6 m room". Width and height
+   cannot both be held. So this scales the covered width as a power of
+   the aspect ratio:
+
+       width(a) = ROOM_WIDTH * (a / ROOM_ASPECT) ** WIDTH_EXP
+
+   WIDTH_EXP = 1 is the old behaviour (constant height, width collapses);
+   0.5 would hold the frame's area (width 1.75 m on a phone, but 3.8 m of
+   height — floor to well past the ceiling). 0.75 splits the difference:
+   a 9:16 phone covers 1.28 m across and 2.78 m of height, so the desk
+   runs edge to edge, the chair and the drawer stack bracket it, and the
+   overflow lands on the posters above and the rug below instead of on
+   bare wall. It is one continuous curve, so an orientation flip glides.
+
+   Distance vs FOV: this pulls back first and widens the lens only for
+   what is left over, because a long lens flatters the CRT and the room
+   is small. The ceiling on pulling back is physical, not taste — the
+   floor and both side walls stop at z = 2.3, so past `maxDist` the lens
+   is standing outside the box. A phone runs out of room at ~3.0 m and
+   makes up the rest at about 49 deg vertical, which in portrait is only
+   ~24 deg horizontal: no wide-angle stretch where it would show. */
+
+/** Aspect the room was composed at — the 1440x900 desk shot. */
+const ROOM_ASPECT = 1.6
+/** Unit vector from the room camera toward its target: the shot's axis. */
+const ROOM_AXIS = ROOM_CAM_TARGET.clone().sub(ROOM_CAM_POS).normalize()
+/** How far the desk shot stands off its target. */
+const ROOM_DIST = ROOM_CAM_POS.distanceTo(ROOM_CAM_TARGET)
+const ROOM_HALF_V = Math.tan(MathUtils.degToRad(CAM_FOV) / 2)
+/** World width the desk shot covers at the target plane (3.257 m). */
+const ROOM_WIDTH = 2 * ROOM_HALF_V * ROOM_ASPECT * ROOM_DIST
+/** See the note above: 1 keeps the lens, 0.5 keeps the frame area. */
+const WIDTH_EXP = 0.75
+/** Nothing sane needs more; a freak viewport must not fish-eye the room. */
+const CAM_MAX_FOV = 62
+/** The floor plane and both side walls end here (Room.tsx). */
+const ROOM_FRONT_Z = 2.3
+/** Keep the lens this far inside that edge, so parallax cannot cross it. */
+const CAM_FRONT_MARGIN = 0.16
+
+/**
+ * Furthest a camera may stand back along `axis` from `target` and still
+ * be inside the room. `axis` points from the camera at the target, so
+ * the camera sits at `target - axis * d` and its z grows as `-axis.z*d`.
+ */
+function maxDist(target: Vector3, axis: Vector3): number {
+  const back = -axis.z
+  if (back <= 1e-4) return Infinity
+  return Math.max(0.5, (ROOM_FRONT_Z - CAM_FRONT_MARGIN - target.z) / back)
+}
+
+/**
+ * The room pose for this device. Writes the pose into the out-vectors
+ * and returns the vertical FOV (deg) to shoot it at.
+ *
+ * `dev` decides WHETHER to reframe (tier 'desk' gets the authored
+ * constants, byte for byte, before any arithmetic runs); the camera's
+ * own `aspect` decides HOW, the way screenCamPose and boardCamPose
+ * already do it — the projection matrix is the authority on what the
+ * lens actually sees, and it already tracks resize and orientation.
+ */
+export function roomCamPose(
+  dev: DeviceState,
+  aspect: number,
+  outPos: Vector3,
+  outTarget: Vector3,
+): number {
+  if (dev.tier === 'desk') {
+    outPos.copy(ROOM_CAM_POS)
+    outTarget.copy(ROOM_CAM_TARGET)
+    return CAM_FOV_ROOM
+  }
+  const a = Math.max(aspect, 0.1)
+  const width = ROOM_WIDTH * Math.pow(a / ROOM_ASPECT, WIDTH_EXP)
+  /* The narrower the frame, the less of the room is left to compose
+     with, so the aim slides off the authored point and onto the CRT's
+     own centre: it re-centres the monitor and spends the extra height on
+     the wall above rather than on more floorboards. Zero at 16:10 and
+     wider, so a landscape tablet keeps the authored aim exactly. */
+  const narrow = MathUtils.clamp(1 - a / ROOM_ASPECT, 0, 1)
+  outTarget.lerpVectors(ROOM_CAM_TARGET, GLASS_WORLD_CENTER, narrow)
+
+  const want = width / 2 / (ROOM_HALF_V * a)
+  const dist = Math.min(want, maxDist(outTarget, ROOM_AXIS))
+  outPos.copy(outTarget).addScaledVector(ROOM_AXIS, -dist)
+  return Math.min(CAM_MAX_FOV, MathUtils.radToDeg(2 * Math.atan(width / 2 / (dist * a))))
+}
+
+/** The opening dolly, as an offset from the room pose it lands on. */
+const INTRO_OFFSET = INTRO_CAM_POS.clone().sub(ROOM_CAM_POS)
+const _introPos = new Vector3()
+const _introTgt = new Vector3()
+
+/**
+ * Where the opening dolly starts on this device. The same move in the
+ * camera's own frame as the desk shot's, scaled with the distance the
+ * shot is taken from, so it always ends on `roomCamPose` — a dolly that
+ * lands somewhere else reads as a bug.
+ */
+export function roomIntroPos(dev: DeviceState, aspect: number, out: Vector3): Vector3 {
+  if (dev.tier === 'desk') return out.copy(INTRO_CAM_POS)
+  roomCamPose(dev, aspect, _introPos, _introTgt)
+  const scale = _introPos.distanceTo(_introTgt) / ROOM_DIST
+  return out.copy(_introPos).addScaledVector(INTRO_OFFSET, scale)
+}
 
 /** Fraction of the limiting viewport dimension the glass fills at zoom. */
 const SCREEN_FILL = 0.94
@@ -179,6 +299,49 @@ export const LIB_CAM_TARGET = new Vector3(-1.535, 0.8, -0.465)
 /* Far enough back to hold the placard and the catalogue card in one
    frame, and far enough left that the desk chair stays out of it. */
 export const LIB_CAM_POS = new Vector3(-1.45, 0.97, 1.93)
+
+const LIB_AXIS = LIB_CAM_TARGET.clone().sub(LIB_CAM_POS).normalize()
+const LIB_DIST = LIB_CAM_POS.distanceTo(LIB_CAM_TARGET)
+/** What the shelf shot is actually framed on: the carcass, top to toe.
+    Derived from the pose above, so at 16:10 the fit below reproduces it. */
+const LIB_FIT_H = 2 * Math.tan(MathUtils.degToRad(LIB_FOV) / 2) * LIB_DIST
+/** The case plus a hand's width of air on each side. */
+const LIB_FIT_W = CASE.w * 1.2
+
+/**
+ * The shelf pose for this device — same contract as `roomCamPose`.
+ *
+ * The desk shot is framed on the carcass's HEIGHT, which leaves the
+ * 0.8 m case filling a third of a 16:10 frame and only 0.70 m of frame
+ * to live in on a 9:16 phone: the sides of the case get cut off. So on
+ * anything narrow this fits the case in both directions instead (the
+ * same max-of-two-fits as screenCamPose), pulling back to the room's
+ * front edge and widening the lens for the remainder.
+ */
+export function libCamPose(
+  dev: DeviceState,
+  aspect: number,
+  outPos: Vector3,
+  outTarget: Vector3,
+): number {
+  outTarget.copy(LIB_CAM_TARGET)
+  if (dev.tier === 'desk') {
+    outPos.copy(LIB_CAM_POS)
+    return LIB_FOV
+  }
+  const a = Math.max(aspect, 0.1)
+  const halfV = Math.tan(MathUtils.degToRad(LIB_FOV) / 2)
+  const want = Math.max(LIB_FIT_H / 2 / halfV, LIB_FIT_W / 2 / (halfV * a))
+  const dist = Math.min(want, maxDist(outTarget, LIB_AXIS))
+  outPos.copy(outTarget).addScaledVector(LIB_AXIS, -dist)
+  // the height it was composed on comes first; widen only if the case
+  // still would not fit across
+  const fov = Math.max(
+    MathUtils.radToDeg(2 * Math.atan(LIB_FIT_H / 2 / dist)),
+    MathUtils.radToDeg(2 * Math.atan(LIB_FIT_W / 2 / (dist * a))),
+  )
+  return Math.min(CAM_MAX_FOV, fov)
+}
 
 /** Re-export so the rig can lerp between the room lens and the shelf lens. */
 export const CAM_FOV_ROOM = CAM_FOV

@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react'
-import { useThree } from '@react-three/fiber'
+import { useStore, useThree } from '@react-three/fiber'
+import { device } from '../device'
 
 /* =====================================================================
    Frame governor — idle and hidden-tab frame-rate governance.
@@ -44,10 +45,36 @@ import { useThree } from '@react-three/fiber'
    elapsedTime simply stops advancing for the time the tab was away —
    springs and the clock's sub-stepper read that as "paused while gone",
    not "jump to catch up".
+
+   LITE (phones). The active rate is capped too. A phone asked to draw
+   this room at 60 (or 120) Hz spends a minute looking fast and then
+   thermally throttles for the rest of the visit — the GPU clocks drop,
+   the frame rate collapses BELOW the cap, and the picture gets worse
+   than if it had never tried. A hard 30 Hz ceiling keeps the die cool,
+   the rate steady and the battery alive, and nothing in this room moves
+   fast enough to read as stutter at 30. The desk is untouched: on
+   `lite: false` this file invalidates on every tick exactly as before.
    ===================================================================== */
 
 const IDLE_MS = 8000
 const IDLE_FRAME_MS = 1000 / 30
+
+/** lite: the active frame ceiling. Exported because AdaptiveQuality's
+    meter has to judge the measured rate against this cap instead of the
+    panel's own rate — otherwise it reads our own deliberate 30 Hz as a
+    dying GPU and walks the canvas down to the floor for nothing. */
+export const LITE_ACTIVE_HZ = 30
+/** lite: the idle rate, below the desk's 30 — a parked phone should be
+    spending nothing at all on a picture nobody is touching */
+const LITE_IDLE_HZ = 20
+/** rAF timestamps land on the display's own grid (16.7 ms at 60 Hz,
+    8.3 at 120), so a budget of exactly 1000/30 is missed by a rounding
+    hair at the 33.3 ms tick and waits for the next one — 20 Hz on a
+    60 Hz panel. A tick of slack makes the gate open on the tick we
+    actually want, on every panel. */
+const GRID_SLACK_MS = 4
+const LITE_ACTIVE_MS = 1000 / LITE_ACTIVE_HZ - GRID_SLACK_MS
+const LITE_IDLE_MS = 1000 / LITE_IDLE_HZ - GRID_SLACK_MS
 
 type Listener = () => void
 const listeners = new Set<Listener>()
@@ -82,6 +109,26 @@ export default function FrameGovernor() {
   const invalidate = useThree((s) => s.invalidate)
   const setFrameloop = useThree((s) => s.setFrameloop)
   const clock = useThree((s) => s.clock)
+  const store = useStore()
+
+  /* Hold demand mode against the Canvas's own `frameloop` prop, exactly
+     as AdaptiveQuality holds its pixel ratio against `dpr`: fiber's
+     configure() re-applies that prop (default 'always') on every render
+     of <Canvas>, which is every render of App — a view change, a paper
+     lifted, the shelf opening — and a governor that has been quietly
+     put back into 'always' mode caps nothing at all.
+
+     LITE ONLY, deliberately. On the desk the mode is set once at mount
+     and left to whatever fiber does with it afterwards, which is the
+     behaviour the desk has today; re-asserting it there would start
+     governing frames on a machine whose picture is the contract. */
+  useEffect(
+    () =>
+      store.subscribe((s) => {
+        if (device().lite && s.frameloop !== 'demand') s.setFrameloop('demand')
+      }),
+    [store],
+  )
 
   useEffect(() => {
     setFrameloop('demand')
@@ -90,6 +137,7 @@ export default function FrameGovernor() {
     let hiddenNow = document.visibilityState === 'hidden'
     let lastInput = performance.now()
     let lastIdleFrame = 0
+    let lastLiteFrame = 0
 
     const wake = () => {
       lastInput = performance.now()
@@ -117,13 +165,25 @@ export default function FrameGovernor() {
     const tick = (t: number) => {
       raf = requestAnimationFrame(tick)
       if (hiddenNow) return // fully paused: nothing invalidates, nothing renders
+      // read per tick, not per mount: the tier can flip under us when a
+      // phone is rotated or a desk window is dragged narrow
+      const lite = device().lite
+      // a flip INTO lite finds whatever mode fiber last left behind
+      if (lite && store.getState().frameloop !== 'demand') setFrameloop('demand')
       if (t - lastInput < IDLE_MS) {
         setIdleFlag(false)
-        invalidate()
+        if (!lite) {
+          invalidate() // the desk: every tick, full display rate
+          return
+        }
+        if (t - lastLiteFrame >= LITE_ACTIVE_MS) {
+          lastLiteFrame = t
+          invalidate()
+        }
         return
       }
       setIdleFlag(true)
-      if (t - lastIdleFrame >= IDLE_FRAME_MS) {
+      if (t - lastIdleFrame >= (lite ? LITE_IDLE_MS : IDLE_FRAME_MS)) {
         lastIdleFrame = t
         invalidate()
       }
@@ -143,7 +203,7 @@ export default function FrameGovernor() {
       // hygiene for HMR/unmount only — the governor lives for the app's life
       setFrameloop('always')
     }
-  }, [invalidate, setFrameloop, clock])
+  }, [invalidate, setFrameloop, clock, store])
 
   return null
 }

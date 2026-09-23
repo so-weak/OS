@@ -1,4 +1,5 @@
 import { SCREEN_W, SCREEN_H } from '../constants'
+import { useDevice } from '../device'
 import { useSystem } from './store'
 import { useEggs } from './eggs'
 import { useWorld } from '../world'
@@ -15,16 +16,27 @@ import './wm/shell.css'
    The CRT overlay (scanlines/vignette) always renders on top; the BSOD
    egg overlays everything but the glass itself. Hacker mode (konami)
    green-shifts the whole stage.
+
+   `data-tier` is the ONE hook every responsive rule in the OS hangs
+   off (see the PHONE TIER block at the foot of wm/shell.css). The OS
+   is a 1024px div inside a CSS-3D transform, so a viewport media query
+   here would be measuring the wrong thing entirely — and on a desk it
+   would be one bad breakpoint away from moving a pixel. The attribute
+   comes from src/device.ts, which reports 'desk' for anything wider
+   than a tablet; nothing styles [data-tier='desk'], so the desk render
+   is exactly the one that shipped.
    ===================================================================== */
 
 export default function SoubhikOS() {
   const power = useSystem((s) => s.power)
   const bsod = useEggs((s) => s.bsod)
   const hacker = useEggs((s) => s.hacker)
+  const tier = useDevice((s) => s.tier)
 
   return (
     <div
       className={`os-root${hacker ? ' hacker' : ''}`}
+      data-tier={tier}
       style={{ width: SCREEN_W, height: SCREEN_H }}
       onContextMenu={(e) => e.preventDefault()}
     >

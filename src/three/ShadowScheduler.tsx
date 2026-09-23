@@ -12,6 +12,7 @@ import type {
   SpotLight,
   WebGLRenderer,
 } from 'three'
+import { device } from '../device'
 import { useLoad } from '../loadProgress'
 import { useSystem } from '../os/store'
 import Staged from './Staged'
@@ -42,14 +43,39 @@ import { useStagedSteps } from './stage'
 
    Tiny casters (screws, legends, knobs…) contribute no readable shadow,
    so they are dropped from the depth pass once, at the first scan.
+
+   LITE (phones) — three knobs, all of them size and cadence, none of
+   them "off". Turning a light's castShadow off would be the biggest
+   saving on paper and is the one thing NOT done here: a shadow-casting
+   light entering or leaving the scene changes the light counts every
+   shadow-receiving program is compiled against, so the flip costs a
+   full material recompile — hundreds of milliseconds of freeze on the
+   exact device we are trying to rescue, and the room loses the lamp
+   shadow that is most of its depth. Window.tsx carries the same warning
+   about its sun. So instead: a quarter of the shadow texels (512 vs
+   1024 per light — the map is sampled across a third of the pixels on a
+   phone, where 1024 was never resolvable), half the update cadence
+   (15 Hz vs 30 while something moves — a spot's shadow map is
+   camera-independent, so this only ever affects props in motion, never
+   looking around), and a bigger minimum caster, since a 2 cm prop's
+   shadow lands under a phone pixel. All three are reversible at runtime
+   and all three are inert when `lite` is false.
    ===================================================================== */
 
 /** casters with a world bounding radius under this stop casting (metres) */
 const MIN_CASTER_RADIUS = 0.022
+/** lite: the same cut, moved up for a screen a third as wide */
+const LITE_CASTER_RADIUS = 0.05
 /** silhouette movement (metres) that is worth a new shadow map */
 const MOVE_EPS = 0.002
 /** shortest gap between two shadow renders while things move */
 const MIN_INTERVAL = 1 / 30
+/** lite: half the cadence — a tile-based mobile GPU pays a full
+    store/load for every extra depth pass */
+const LITE_MIN_INTERVAL = 1 / 15
+/** lite: shadow map edge, per light (the desk keeps whatever the light
+    was authored with — this file never writes that value) */
+const LITE_MAP_SIZE = 512
 /** frames between re-scans for meshes/lights that mounted later */
 const RESCAN_EVERY = 45
 
@@ -97,6 +123,45 @@ function worldRadius(m: Mesh): number {
   return g.boundingSphere.radius * sc
 }
 
+/* --- shadow map resolution, changeable at runtime --------------------
+   Each light's AUTHORED map size (the one in its own JSX) is captured
+   the first time anyone here looks at it, before lite has touched it,
+   so a tier flip back to the desk restores the real value rather than
+   whatever we last wrote. Both entry points (the warm pass and the
+   scan) capture through this, so neither has to run first. */
+const authored = new WeakMap<SpotLight, [number, number]>()
+
+function authoredSize(light: SpotLight): [number, number] {
+  let a = authored.get(light)
+  if (!a) {
+    a = [light.shadow.mapSize.x, light.shadow.mapSize.y]
+    authored.set(light, a)
+  }
+  return a
+}
+
+/** Resize a light's shadow map. three allocates the render target once,
+    on the first depth pass, and only reallocates while `shadow.map` is
+    null — so a bare mapSize change is either ignored or, worse, renders
+    a 1024 viewport into a 512 target. The old target (and its depth
+    texture, which is not freed with it) has to be disposed by hand,
+    exactly as three does on a shadow-type change. */
+function setMapSize(light: SpotLight, x: number, y: number): void {
+  const sh = light.shadow
+  if (sh.mapSize.x === x && sh.mapSize.y === y) return
+  sh.mapSize.set(x, y)
+  const map = sh.map
+  if (map) {
+    if (map.depthTexture) {
+      map.depthTexture.dispose()
+      map.depthTexture = null
+    }
+    map.dispose()
+    sh.map = null
+  }
+  sh.needsUpdate = true
+}
+
 function versionOf(m: Mesh): number {
   let v = 0
   const inst = m as InstancedMesh
@@ -116,6 +181,11 @@ interface Sched {
   last: number
   pending: boolean
   trimmed: WeakSet<Mesh>
+  /** casters only the LITE size cut dropped — restored if the tier flips
+      back (a WeakSet, so a prop that unmounts meanwhile is not held) */
+  pruned: WeakSet<Mesh>
+  /** the tier the current shadow settings were built for */
+  lite: boolean
   key: string
 }
 
@@ -127,6 +197,8 @@ function createSched(): Sched {
     last: -1,
     pending: true,
     trimmed: new WeakSet<Mesh>(),
+    pruned: new WeakSet<Mesh>(),
+    lite: device().lite,
     key: '',
   }
 }
@@ -141,12 +213,17 @@ function rescan(s: Sched, scene: Scene): void {
   })
 
   // drop the tiny ones once (never instanced meshes: one draw for all)
+  const minRadius = s.lite ? LITE_CASTER_RADIUS : MIN_CASTER_RADIUS
   for (const m of casters) {
     if (s.trimmed.has(m)) continue
     s.trimmed.add(m)
     if ((m as InstancedMesh).isInstancedMesh) continue
     const r = worldRadius(m)
-    if (r > 0 && r < MIN_CASTER_RADIUS) m.castShadow = false
+    if (r > 0 && r < minRadius) {
+      m.castShadow = false
+      // above the desk cut: it is lite's doing, so lite can undo it
+      if (r >= MIN_CASTER_RADIUS) s.pruned.add(m)
+    }
   }
   const kept = casters.filter((m) => m.castShadow)
 
@@ -164,10 +241,51 @@ function rescan(s: Sched, scene: Scene): void {
   // take over any new shadow light
   for (const light of lights) {
     if (s.lights.some((l) => l.light === light)) continue
+    authoredSize(light) // before anything here can overwrite it
     light.shadow.autoUpdate = false
     light.shadow.needsUpdate = true
     s.lights.push({ light, sig: new Float64Array(32).fill(NaN), lit: true, stale: false })
   }
+  /* re-assert the lite resolution. R3F re-applies a light's own
+     `shadow-mapSize` prop whenever its owner re-renders, which would
+     leave mapSize at 1024 over a 512 target; setMapSize is a no-op
+     unless that has actually happened. Never runs on the desk. */
+  if (s.lite) for (const l of s.lights) setMapSize(l.light, LITE_MAP_SIZE, LITE_MAP_SIZE)
+}
+
+/** The tier flipped (rotation, a window dragged across a breakpoint):
+    move every shadow setting to the other tier's values in place. No
+    remount, no reload — the maps are reallocated at the new size and
+    the old ones are freed. */
+function retier(s: Sched, scene: Scene, lite: boolean): void {
+  s.lite = lite
+  if (lite) {
+    scene.traverse((o) => {
+      const m = o as Mesh
+      if (!m.isMesh || !m.castShadow || (m as InstancedMesh).isInstancedMesh) return
+      const r = worldRadius(m)
+      if (r > 0 && r < LITE_CASTER_RADIUS) {
+        m.castShadow = false
+        s.pruned.add(m)
+      }
+    })
+  } else {
+    // only the live ones are reachable, which is the point of the WeakSet
+    scene.traverse((o) => {
+      const m = o as Mesh
+      if (m.isMesh && s.pruned.has(m)) {
+        m.castShadow = true
+        s.pruned.delete(m)
+      }
+    })
+  }
+  for (const l of s.lights) {
+    const [x, y] = authoredSize(l.light)
+    if (lite) setMapSize(l.light, LITE_MAP_SIZE, LITE_MAP_SIZE)
+    else setMapSize(l.light, x, y)
+  }
+  s.key = '' // the caster list changed: rebuild it and redraw
+  s.pending = true
 }
 
 /** has any caster or light moved enough to need a new depth pass? */
@@ -223,6 +341,8 @@ function detectChange(s: Sched): boolean {
 
 /** one frame of scheduling; returns nothing, flips shadow.needsUpdate */
 function tickSched(s: Sched, scene: Scene, now: number, away: boolean): void {
+  const lite = device().lite
+  if (lite !== s.lite) retier(s, scene, lite)
   if (s.frame++ % RESCAN_EVERY === 0) rescan(s, scene)
 
   if (detectChange(s)) s.pending = true
@@ -236,7 +356,8 @@ function tickSched(s: Sched, scene: Scene, now: number, away: boolean): void {
   }
 
   const wake = s.lights.some((l) => l.stale && l.lit)
-  if ((s.pending || wake) && (wake || now - s.last >= MIN_INTERVAL)) {
+  const gap = s.lite ? LITE_MIN_INTERVAL : MIN_INTERVAL
+  if ((s.pending || wake) && (wake || now - s.last >= gap)) {
     for (const l of s.lights) {
       if (!l.lit) {
         l.stale = true // refresh when it wakes
@@ -293,6 +414,11 @@ function* warmShadowPass(gl: WebGLRenderer, scene: Scene): Generator<void, boole
     else if ((o as Light).isLight && o.castShadow) lights.push(o as SpotLight)
   })
   if (!lights.length || !casters.length) return false
+  /* the first shadow draw is the one that ALLOCATES the maps, so lite's
+     size has to be in place before it — otherwise a phone allocates
+     two 1024² targets behind the veil and frees them a frame later */
+  for (const l of lights) authoredSize(l)
+  if (device().lite) for (const l of lights) setMapSize(l, LITE_MAP_SIZE, LITE_MAP_SIZE)
   const kinds = new Map<string, Set<Mesh>>()
   for (const m of casters) {
     const k = depthKind(m)
