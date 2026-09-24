@@ -228,8 +228,8 @@ export const projects: Project[] = [
   },
   {
     id: 'pay-by-face',
-    name: 'Pay-by-Face & LOOK: Facial Biometrics',
-    tagline: 'Real-Time Recognition + Anti-Spoofing',
+    name: 'Pay-by-Face & LOOK',
+    tagline: 'Facial Biometrics — Real-Time Recognition + Anti-Spoofing',
     org: 'HDFC Bank',
     category: 'ml-cv',
     stack: [
@@ -264,8 +264,8 @@ export const projects: Project[] = [
   },
   {
     id: 'pay-by-voice',
-    name: 'Vaani & Pay-by-Voice: Voice Biometrics',
-    tagline: 'Speaker Verification + Voice-to-Voice',
+    name: 'Vaani & Pay-by-Voice',
+    tagline: 'Voice Biometrics — Speaker Verification + Voice-to-Voice',
     org: 'HDFC Bank',
     category: 'ml-cv',
     stack: [
