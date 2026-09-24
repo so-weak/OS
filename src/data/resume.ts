@@ -1,7 +1,9 @@
 /* =====================================================================
    Single source of truth for all portfolio content.
-   Transcribed from Soubhik Ghosh's resume (June 2026). Do NOT invent
-   facts, metrics or dates — if it is not here, it does not exist.
+   Transcribed from Soubhik Ghosh's resume (September 2026). Do NOT
+   invent facts, metrics or dates — if it is not here, it does not
+   exist. Keep this file in step with public/SoubhikGhosh-Resume.pdf;
+   the CRT renders that same PDF as SVG (see src/os/apps/Resume.tsx).
    ===================================================================== */
 
 /** Prefix a public-asset path with Vite's base URL so it resolves correctly
@@ -10,20 +12,27 @@ const asset = (p: string) => `${import.meta.env.BASE_URL}${p.replace(/^\//, '')}
 
 export const identity = {
   name: 'Soubhik Ghosh',
-  title: 'Artificial Intelligence & Machine Learning Engineer',
+  title: 'GenAI & Machine Learning Engineer',
+  /** the three the resume headline calls out after the role */
+  focus: ['LLMs', 'Agentic AI', 'RAG'],
   phone: '+91-7903388603',
   whatsapp: '+91-9777465221',
   email: '99ghoshsoubhik@gmail.com',
+  website: 'https://so-weak.github.io/OS',
   linkedin: 'https://linkedin.com/in/soweak',
-  github: 'https://github.com/SoubhikGhosh',
+  github: 'https://github.com/so-weak',
   location: 'Bengaluru, India',
   resumePdf: asset('/SoubhikGhosh-Resume.pdf'),
 }
 
-/** Headline experience tally, exactly as stated on the resume. */
-export const experienceTally = { fullTimeYears: 4, internYears: 1 }
+/** Headline experience tally, exactly as stated on the resume: "5+ years
+    of combined experience across HDFC Bank, PayU (Wibmo), and FICO". */
+export const experienceTally = {
+  combinedYears: 5,
+  employers: ['HDFC Bank', 'PayU (Wibmo)', 'FICO'],
+}
 
-export const summary = `Full Stack & AI/ML Engineer with 4 years of full-time experience (plus a 1-year internship) delivering scalable FinTech platforms at HDFC Bank, PayU, and FICO. Ships production Generative AI (LLM agents, RAG, document intelligence) and classical ML/Computer Vision (face/voice biometrics, anti-spoofing, signature verification) on robust full-stack architectures. Recognized with the Silver Star Award (HDFC) for presenting transformative AI to the CEO & Board, and the Quarterly Ace Award (PayU) for zero-defect delivery.`
+export const summary = `GenAI & Machine Learning Engineer with 5+ years of combined experience across HDFC Bank, PayU (Wibmo), and FICO, building production AI systems across Generative AI, LLM engineering, Agentic AI, RAG, Document AI, Computer Vision, biometrics, and intelligent automation. Strong hands-on expertise in LLM orchestration, AI solution architecture, hybrid retrieval, AI microservices, MLOps, and full-stack AI applications, with experience leading engineers and taking AI systems from experimentation to production. Recognized with the HDFC Bank Silver Star Award for AI technical excellence and presenting AI initiatives to the CEO and Board.`
 
 export interface SkillGroup {
   label: string
@@ -38,13 +47,12 @@ export const skills: SkillGroup[] = [
   {
     label: 'GenAI / LLM',
     items: [
-      'Gemini (1.5/2.5 Flash)',
       'Vertex AI',
       'LiteLLM',
       'LangChain',
       'LangGraph',
       'RAG',
-      'Agentic Frameworks',
+      'Agentic AI',
       'Prompt Engineering',
     ],
   },
@@ -53,7 +61,7 @@ export const skills: SkillGroup[] = [
     items: [
       'PyTorch',
       'Transformers',
-      'BERT',
+      'DistilBERT ML',
       'RoBERTa',
       'DeBERTa',
       'LayoutLM',
@@ -65,7 +73,6 @@ export const skills: SkillGroup[] = [
       'InsightFace',
       'Wav2Vec2',
       'Whisper',
-      'Indic Parler-TTS',
       'ECAPA-TDNN',
     ],
   },
@@ -76,10 +83,11 @@ export const skills: SkillGroup[] = [
       'Angular',
       'Micro Frontends',
       'ThreeJS',
+      'WebGL',
       'FastAPI',
       'Spring Boot',
       'Node.js',
-      'REST',
+      'REST APIs',
       'Microservices',
     ],
   },
@@ -121,78 +129,6 @@ export interface Project {
 
 export const projects: Project[] = [
   {
-    id: 'ai-fabric',
-    name: 'AI Fabric: TradeOps',
-    tagline: 'LLM Document Intelligence Platform',
-    org: 'HDFC Bank',
-    category: 'genai',
-    stack: [
-      'Python',
-      'FastAPI',
-      'Gemini 2.5 Flash',
-      'Vertex AI',
-      'LiteLLM',
-      'LayoutLM',
-      'BERT',
-      'Docker',
-      'CI/CD',
-    ],
-    bullets: [
-      "Architected and led the bank's first production Python AI platform: document classification/extraction microservices for 800+ users pan-India at 97% accuracy, cutting manual processing time 90%.",
-      'Built a pluggable LLM interface (Vertex AI + LiteLLM) eliminating vendor lock-in, pairing Gemini with LayoutLM/BERT extraction, confidence scoring, a prompt hub, and an 11-API feedback loop (98%+ test coverage); led 4 engineers and set up CI/CD.',
-    ],
-  },
-  {
-    id: 'cheque-ai',
-    name: 'Cheque Processing: Clearing House',
-    tagline: 'High-Throughput Document AI',
-    org: 'HDFC Bank',
-    category: 'genai',
-    stack: [
-      'Python',
-      'FastAPI',
-      'Gemini 1.5/2.5 Flash',
-      'Vertex AI',
-      'LiteLLM',
-      'LayoutLM',
-      'Donut',
-      'OpenCV',
-    ],
-    bullets: [
-      'Solely owned an AI cheque engine pairing Gemini with LayoutLM/Donut, hitting 99%+ accuracy at 10+ cheques/sec; built a validation harness over 700K+ ICR reject records, projected to halve operations time.',
-    ],
-  },
-  {
-    id: 'verifyx',
-    name: 'VerifyX: Audit, Credit & Retail AI',
-    tagline: 'RAG-Powered Verification Framework',
-    org: 'HDFC Bank',
-    category: 'genai',
-    stack: ['ReactJS', 'FastAPI', 'Gemini', 'RAG (CAG agent)', 'LiteLLM'],
-    bullets: [
-      'Built an extensible audit framework (VKYC + ECCS cheque-data audit) with a CAG chat agent over RAG spanning 27,000+ documents, reused across retail and credit from one modular codebase.',
-      'Optimized chunking and token strategy to cut LLM cost; demoed live to the CEO and Board of Directors.',
-    ],
-  },
-  {
-    id: 'narad-ai',
-    name: 'Narad AI & VRM',
-    tagline: 'Enterprise Agentic Frontends',
-    org: 'HDFC Bank',
-    category: 'genai',
-    stack: [
-      'ReactJS',
-      'Micro Frontends (MFE)',
-      'Gemini',
-      'FastAPI',
-      'LiteLLM',
-      'ThreeJS',
-    ],
-    bullets: [
-      'Single-handedly built the Narad AI email-agent frontend on a reusable MFE architecture (98%+ test coverage) and the VERA voice-to-voice interface with real-time ThreeJS 3D visualizations.',
-    ],
-  },
-  {
     id: 'ai-banking',
     name: 'AI Banking Platform',
     tagline: 'LangGraph Agentic Orchestration',
@@ -204,36 +140,115 @@ export const projects: Project[] = [
       'FastAPI',
       'Gemini',
       'LiteLLM',
-      'ReactJS MFE',
-      'Keycloak/MFA',
+      'ReactJS Micro Frontends',
+      'Keycloak',
+      'MFA',
+      'RAG',
     ],
     bullets: [
-      'Co-designed and drove a LangGraph-based, skills-oriented agentic platform composing banking workflows from modular skills, integrating session management, MFA authentication, and downstream banking entities behind a unified orchestration layer.',
-      "Delivered the customizable Aqua AI micro-frontend chat surface and enforced strict modularity and code-quality standards across the platform's repositories.",
+      "Designed and drove the bank's first agentic AI platform, architecting a LangGraph-based orchestration layer that composes banking workflows from modular skills and agents while integrating session management, MFA-aware agents, authentication, and downstream banking entities.",
+      'Integrated 25+ tools and banking capabilities behind a unified tool-calling layer, enabling agents to securely invoke reusable services and workflows rather than relying on hard-coded conversational flows.',
+      'Designed RAG capabilities over public website and enterprise knowledge sources, enabling agents to retrieve grounded, current information and combine it with authenticated banking workflows and tool responses.',
+      'Designed and load-tested the platform for approximately 3 lakh concurrent users ahead of its initial production rollout; the initiative was subsequently showcased at Global FinTech Fest 2026.',
+      'Established modularity, authentication, observability, and code-quality standards across platform repositories.',
     ],
   },
   {
-    id: 'rag-service',
-    name: 'RAG-as-a-Service',
-    tagline: 'Shared Retrieval Infrastructure',
+    id: 'ai-fabric',
+    name: 'AI Fabric: TradeOps',
+    tagline: 'LLM Document Intelligence Platform',
     org: 'HDFC Bank',
     category: 'genai',
     stack: [
       'Python',
-      'FAISS',
-      'BM25 (hybrid retrieval)',
-      'Sentence-Transformers',
-      'Cohere/BGE reranker',
+      'FastAPI',
+      'Gemini',
+      'Vertex AI',
+      'ChandraOCR',
       'LiteLLM',
+      'LayoutLM',
+      'BERT',
+      'Docker',
+      'CI/CD',
     ],
     bullets: [
-      'Pioneered a hybrid FAISS + BM25 retrieval service with sentence-transformer embeddings and a Cohere/BGE reranker, reducing LLM hallucinations by 40-60% across 5 projects.',
+      "Architected and led the bank's first production Python AI platform: document classification/extraction microservices serving 800+ users pan-India at 97% accuracy, reducing manual processing time by 90%.",
+      'Built a pluggable LLM architecture using Vertex AI and LiteLLM, integrating Gemini with LayoutLM/BERT extraction, confidence scoring, prompt management, and an 11-API feedback loop; led 4 engineers and established CI/CD with 98%+ test coverage.',
+    ],
+  },
+  {
+    id: 'cheque-ai',
+    name: 'Cheque Processing: Clearing House',
+    tagline: 'High-Throughput Document AI',
+    org: 'HDFC Bank',
+    category: 'genai',
+    stack: [
+      'Python',
+      'FastAPI',
+      'Gemini 3.5 Flash Lite',
+      'Vertex AI',
+      'LiteLLM',
+      'LayoutLM',
+      'RapidOCR',
+      'OpenCV',
+    ],
+    bullets: [
+      'Engineered a high-throughput cheque-processing engine combining Gemini, LayoutLM, and Donut, achieving 99%+ accuracy at 10+ cheques/sec; built a validation harness over 700K+ ICR reject records to benchmark and improve production quality.',
+    ],
+  },
+  {
+    id: 'verifyx',
+    name: 'VerifyX: Audit, Credit & Retail AI',
+    tagline: 'RAG-Powered Verification Framework',
+    org: 'HDFC Bank',
+    category: 'genai',
+    stack: ['ReactJS', 'FastAPI', 'Gemini', 'RAG', 'CAG Agent', 'LiteLLM'],
+    bullets: [
+      'Built a reusable audit and verification framework for VKYC and ECCS cheque-data workflows, with a RAG/CAG chat agent spanning 27,000+ documents, reused across retail and credit.',
+      'Optimized chunking and token strategies to improve retrieval efficiency and reduce LLM consumption; presented the framework and enterprise GenAI capabilities to the CEO and Board.',
+    ],
+  },
+  {
+    id: 'narad-ai',
+    name: 'Narad AI & VERA',
+    tagline: 'Enterprise Agentic & Voice AI Interfaces',
+    org: 'HDFC Bank',
+    category: 'genai',
+    stack: [
+      'ReactJS',
+      'Micro Frontends',
+      'Llama Omni',
+      'FastAPI',
+      'LiteLLM',
+      'ThreeJS',
+    ],
+    bullets: [
+      'Built the Narad AI email-agent on a reusable micro-frontend architecture that categorises and responds to emails and raises tickets with 98%+ test coverage, and developed the VERA voice-to-voice interface with real-time ThreeJS visualizations.',
+    ],
+  },
+  {
+    id: 'pay-by-face',
+    name: 'Pay-by-Face & LOOK: Facial Biometrics',
+    tagline: 'Real-Time Recognition + Anti-Spoofing',
+    org: 'HDFC Bank',
+    category: 'ml-cv',
+    stack: [
+      'ArcFace',
+      'FaceNet',
+      'InsightFace',
+      'FAISS',
+      'Milvus',
+      'Custom Anti-Spoofing CNN',
+      'PyTorch',
+    ],
+    bullets: [
+      'Benchmarked 7 face-embedding models and shipped sub-100ms recognition at 99.2% accuracy under production load; built a custom anti-spoofing CNN using liveness, depth maps, and texture analysis with false acceptance rate below 0.1%.',
     ],
   },
   {
     id: 'signature-verify',
     name: 'Signature Verification Pipeline',
-    tagline: 'Document Forensics (CV)',
+    tagline: 'Document Forensics',
     org: 'HDFC Bank',
     category: 'ml-cv',
     stack: [
@@ -244,43 +259,24 @@ export const projects: Project[] = [
       'PyTorch',
     ],
     bullets: [
-      'Designed an end-to-end pipeline: custom YOLOv8 for signature extraction, Pix2Pix GAN for image denoising/cleaning, and embedding-based similarity with bicubic interpolation for precise verification.',
-    ],
-  },
-  {
-    id: 'pay-by-face',
-    name: 'Pay-by-Face & LOOK',
-    tagline: 'Real-Time Facial Recognition + Anti-Spoofing',
-    org: 'HDFC Bank',
-    category: 'ml-cv',
-    stack: [
-      'ArcFace',
-      'FaceNet',
-      'InsightFace',
-      'FAISS/Milvus vector store',
-      'Custom Anti-Spoofing CNN',
-      'PyTorch',
-    ],
-    bullets: [
-      'Benchmarked 7 face-embedding models (ArcFace, FaceNet variants on InsightFace) and shipped sub-100ms recognition at 99.2% accuracy under production load, served from a FAISS/Milvus vector store.',
-      'Built a custom anti-spoofing CNN using liveness, depth maps, and texture analysis, achieving a false acceptance rate below 0.1%; recognized with the Silver Star Award.',
+      'Designed signature verification using custom YOLOv8 extraction, Pix2Pix GAN denoising, embedding similarity, and image interpolation.',
     ],
   },
   {
     id: 'pay-by-voice',
-    name: 'Vaani & Pay-by-Voice',
+    name: 'Vaani & Pay-by-Voice: Voice Biometrics',
     tagline: 'Speaker Verification + Voice-to-Voice',
     org: 'HDFC Bank',
     category: 'ml-cv',
     stack: [
       'Indic Parler-TTS',
       'Wav2Vec2',
-      'Whisper (STT)',
+      'Whisper',
       'ECAPA-TDNN/x-vector',
       'PyTorch',
     ],
     bullets: [
-      'Fine-tuned Indic Parler-TTS and Wav2Vec2/Whisper STT and built ECAPA-TDNN speaker verification reaching 97% accuracy, plus anti-spoofing voice forensics for a multimodal Pay-by-Voice system.',
+      'Built ECAPA-TDNN speaker verification reaching 97% accuracy, with Wav2Vec2/Whisper, Indic Parler-TTS, and anti-spoofing voice forensics for multimodal Pay-by-Voice.',
     ],
   },
   {
@@ -291,7 +287,7 @@ export const projects: Project[] = [
     category: 'ml-cv',
     stack: ['ReactJS', 'FastAPI', 'YugabyteDB', 'Active Learning', 'Quality Gating'],
     bullets: [
-      'Built from scratch an annotation tool with active-learning loops and quality gates; 100+ users have labelled 10,000+ images, now the standard for bank-wide ML training data.',
+      'Built an active-learning annotation platform with quality gates; 100+ users labelled 10,000+ images for bank-wide ML training data.',
     ],
   },
   {
@@ -299,16 +295,16 @@ export const projects: Project[] = [
     name: 'Pareekshana Automation Suite & AI OS',
     tagline: 'QA Automation + Platform Foundation',
     org: 'HDFC Bank',
-    category: 'genai',
+    category: 'ml-cv',
     stack: ['ReactJS MFE', 'RAG-based CAG', 'FastAPI', 'LLM Orchestration'],
     bullets: [
-      'Redesigned the enterprise QA suite (User Experience overhaul, Micro Frontend, RAG-based CAG) and laid the groundwork for AI OS; led up to 10 engineers and presented strategy to the board. Built a YOLO-based merchant-verification POC and an LLM-powered merchant-onboarding compliance solution.',
+      'Redesigned the enterprise QA suite with Micro Frontends, RAG-based CAG, and LLM orchestration; led up to 10 engineers and built AI-powered merchant-verification and onboarding compliance POCs.',
     ],
   },
   {
     id: 'soweak',
     name: 'soweak: AI Security Framework',
-    tagline: 'OWASP-Aligned LLM Security Middleware (Python & TypeScript)',
+    tagline: 'Python & TypeScript — PyPI & npm',
     org: 'Open Source',
     category: 'oss',
     stack: [
@@ -322,12 +318,10 @@ export const projects: Project[] = [
       'OWASP LLM Top 10',
     ],
     bullets: [
-      'Published an OWASP-aligned security middleware that defends every boundary of an LLM pipeline (input, retrieval, tool calls, output, streaming) with block/redact/transform/approval decisions and full audit trails; shipped both a Python (PyPI) library and an isomorphic TypeScript (npm) port for Node, browsers, and edge runtimes.',
-      'Trained custom NER and NLP ML classifiers (RoBERTa/DeBERTa fine-tunes) for prompt-injection, jailbreak, PII/DLP, and toxicity detection, with LangChain, OpenAI, and Gemini adapters plus a red-team CLI.',
+      'Published OWASP-aligned middleware defending LLM boundaries across input, retrieval, tool calls, output, and streaming; shipped Python (PyPI) and TypeScript (npm) implementations with audit trails.',
+      'Trained RoBERTa/DeBERTa classifiers for prompt injection, jailbreak, PII/DLP, and toxicity detection, with LangChain, OpenAI, and Gemini adapters plus a red-team CLI.',
     ],
-    links: [
-      { label: 'GitHub', url: 'https://github.com/SoubhikGhosh/soweak' },
-    ],
+    links: [{ label: 'GitHub', url: 'https://github.com/so-weak/soweak' }],
   },
   {
     id: 'aakaar',
@@ -344,15 +338,12 @@ export const projects: Project[] = [
       'WebSockets',
       'SQLite',
       'Chroma',
-      'Playwright',
+      'PlaywrightMCP',
     ],
     bullets: [
-      'Built a multi-tenant platform that compiles plain-language tasks into a typed DAG of registry-defined capabilities via an LLM planner, then executes it on a generic runtime interpreter with a credential vault and per-task audit.',
-      'Engineered a remote-execution spine dispatching capability nodes over outbound WebSockets to lightweight cross-OS agents (shell, system, desktop-GUI), letting one authored workflow run on the server or any enrolled workstation.',
+      'Built a multi-tenant platform that compiles natural-language tasks into typed DAG workflows through an LLM planner, with credential management, per-task audit, and remote execution over WebSockets.',
     ],
-    links: [
-      { label: 'GitHub', url: 'https://github.com/SoubhikGhosh/aakaar' },
-    ],
+    links: [{ label: 'GitHub', url: 'https://github.com/so-weak/aakaar' }],
   },
 ]
 
@@ -373,18 +364,17 @@ export const experience: Job[] = [
     period: 'Nov 2024 – Present',
     location: 'Bengaluru, India',
     bullets: [
-      'Generative AI & LLM engineering: document intelligence, RAG, agentic platforms and enterprise frontends for India’s largest private bank.',
-      'Machine learning, computer vision & biometrics: face/voice verification, anti-spoofing, signature forensics and annotation tooling.',
+      'Generative AI & large language model engineering: agentic platforms, document intelligence, RAG and enterprise AI interfaces for India’s largest private bank.',
+      'Machine learning, computer vision & biometrics: face and voice verification, anti-spoofing, signature forensics and annotation tooling.',
     ],
     projectIds: [
+      'ai-banking',
       'ai-fabric',
       'cheque-ai',
       'verifyx',
       'narad-ai',
-      'ai-banking',
-      'rag-service',
-      'signature-verify',
       'pay-by-face',
+      'signature-verify',
       'pay-by-voice',
       'ankan',
       'pareekshana',
@@ -396,10 +386,9 @@ export const experience: Job[] = [
     period: 'Aug 2022 – Nov 2024',
     location: 'Bengaluru, India',
     bullets: [
-      'Owned the Angular frontend end-to-end for the Fraud Detection Risk Management Portal (Angular, Figma), from design and development through state management, performance tuning, and production deployment of complex data-visualization dashboards.',
-      'Architected and scaled Spring Boot microservices to absorb traffic spikes, cutting response times 50%; developed 20+ REST APIs backed by Couchbase and Redis caching.',
-      'Built the FIDO2 / FIDO UAM / Keycloak authentication and secure API gateways.',
-      'Containerized and shipped services with Docker, Kubernetes, and Nginx; earned the PayU ThankU and Quarterly Ace awards for consistent full-stack delivery.',
+      'Owned the Angular frontend end-to-end for the Fraud Detection Risk Management Portal, including architecture, UI development, state management, performance optimization, and production deployment.',
+      'Architected and scaled Spring Boot microservices, developing 20+ REST APIs with Couchbase and Redis caching and reducing response times by 50% during high-traffic workloads.',
+      'Built secure authentication and API infrastructure using FIDO2, FIDO UAM, Keycloak, secure API gateways, Docker, Kubernetes, and Nginx; received PayU Quarterly Ace and ThankU Awards.',
     ],
   },
   {
@@ -408,7 +397,7 @@ export const experience: Job[] = [
     period: 'Jun 2021 – Aug 2022',
     location: 'Bengaluru, India',
     bullets: [
-      'Built Python + Computer Vision pipelines to extract data from bank statements and identity documents; optimized C++/Python facial-recognition code toward FRVT NIST certification and annotated rPPG liveness-detection datasets within an Agile SDLC.',
+      'Built Python and Computer Vision pipelines for bank statements and identity documents; optimized C++/Python facial-recognition code toward FRVT/NIST certification and contributed to rPPG liveness-detection datasets and model development.',
     ],
   },
 ]
@@ -420,28 +409,16 @@ export const education = [
     score: '9.56 CGPA',
     period: '2018 – 2022',
   },
-  {
-    degree: 'Class XII (CBSE)',
-    school: 'Delhi Public School, Dhanbad',
-    score: '90.4%',
-    period: '2018',
-  },
-  {
-    degree: 'Class X (ICSE)',
-    school: 'De-Nobili School CMRI, Dhanbad',
-    score: '95%',
-    period: '2016',
-  },
 ]
 
 export const awards = [
   {
     title: 'Silver Star Award — HDFC Bank',
-    detail: 'AI technical excellence; presented transformative AI to the CEO & Board.',
+    detail: 'AI technical excellence.',
   },
   {
     title: 'Quarterly Ace Award — PayU',
-    detail: 'Zero-defect delivery.',
+    detail: 'Consistent full-stack delivery.',
   },
   {
     title: 'ThankU Award — PayU',
@@ -454,7 +431,7 @@ export const awards = [
 ]
 
 export const certifications = [
-  'Google IT Support Specialization',
+  'Google IT Support',
   'From Data to Insights with Google Cloud',
   'Human-Centered Design',
   'JLPT N4 (Japanese Language Proficiency Test)',

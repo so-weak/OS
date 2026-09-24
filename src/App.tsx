@@ -71,10 +71,10 @@ const Scene = lazy(sceneModule)
 const LibraryPage = lazy(() => import('./library/LibraryPage'))
 
 /* ---------- identity, derived once from resume.ts ----------
-   "Artificial Intelligence & Machine Learning Engineer" is the title;
-   the loader and the HUD get the short form of it. */
+   The resume title is "GenAI & Machine Learning Engineer"; the loader
+   and the HUD get the short form, "GenAI/ML Engineer", so the line fits
+   a phone without wrapping. */
 const SHORT_TITLE = identity.title
-  .replace(/Artificial Intelligence/i, 'AI')
   .replace(/Machine Learning/i, 'ML')
   .replace(/\s*&\s*/g, '/')
 const SHORT_TITLE_LC = SHORT_TITLE.replace(/ (\w)/g, (_m, c: string) => ` ${c.toLowerCase()}`)

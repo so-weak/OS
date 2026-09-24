@@ -273,7 +273,7 @@ function DeskBody() {
 }
 
 /* ---------- brass nameplate at the front edge (U-P3) ---------- */
-const NAME_TITLE = 'AI / ML ENGINEER' // identity.title, abbreviated to fit
+const NAME_TITLE = 'GENAI / ML ENGINEER' // identity.title, abbreviated to fit
 
 function Nameplate() {
   const tex = useMemo(

@@ -341,11 +341,11 @@ export default function Terminal({ windowId }: AppProps) {
       ...(JLPT_LEVEL
         ? [[{ text: 'Locale: ', cls: 'tc-amber' }, { text: `en_IN · ja_JP (JLPT ${JLPT_LEVEL})` }]]
         : []),
-      [{ text: 'Uptime: ', cls: 'tc-amber' }, { text: `${experienceTally.fullTimeYears} years full-time (+${experienceTally.internYears} intern)` }],
+      [{ text: 'Uptime: ', cls: 'tc-amber' }, { text: `${experienceTally.combinedYears}+ years (${experienceTally.employers.join(', ')})` }],
       [{ text: 'Shell: ', cls: 'tc-amber' }, { text: 'sbsh 1.0 (feature-incomplete on purpose)' }],
       [{ text: 'Resolution: ', cls: 'tc-amber' }, { text: `${SCREEN_W}×${SCREEN_H} @ 60Hz-ish` }],
       [{ text: 'DE: ', cls: 'tc-amber' }, { text: `${job.company} — ${job.role}` }],
-      [{ text: 'GPU: ', cls: 'tc-amber' }, { text: 'Gemini 2.5 Flash (cloud-attached)' }],
+      [{ text: 'GPU: ', cls: 'tc-amber' }, { text: 'Gemini (cloud-attached)' }],
       [{ text: 'Awards: ', cls: 'tc-amber' }, { text: `${awards[0].title.split(' — ')[0]} · ${awards[1].title.split(' — ')[0]}` }],
       [{ text: 'Contact: ', cls: 'tc-amber' }, { text: identity.email }],
       [
