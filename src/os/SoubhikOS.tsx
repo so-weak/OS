@@ -24,7 +24,9 @@ import './wm/shell.css'
    would be one bad breakpoint away from moving a pixel. The attribute
    comes from src/device.ts, which reports 'desk' for anything wider
    than a tablet; nothing styles [data-tier='desk'], so the desk render
-   is exactly the one that shipped.
+   is exactly the one that shipped. Nothing styles [data-tier='tablet']
+   either, and that is deliberate and measured — see "AND WHY THERE IS
+   NO TABLET BLOCK" at the foot of wm/shell.css.
    ===================================================================== */
 
 export default function SoubhikOS() {

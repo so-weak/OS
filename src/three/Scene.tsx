@@ -74,6 +74,14 @@ export default function Scene() {
     <>
       <Canvas
         shadows="percentage"
+        /* The room renders on demand, and FrameGovernor is what asks.
+           This has to be the PROP: fiber's configure() re-applies it on
+           every render of <Canvas> — every render of App — so a mode set
+           from inside the canvas is undone by the first view change, and
+           re-asserting it there makes setFrameloop() zero
+           clock.elapsedTime (the room's oscillation phase) on every App
+           render. See the header of FrameGovernor.tsx. */
+        frameloop="demand"
         // the display's own ratio up to 2 (a 1.25 cap stretched every
         // label 1.6x on Retina); AdaptiveQuality picks the live rung
         // before the first drawn frame and walks it under load

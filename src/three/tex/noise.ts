@@ -6,7 +6,7 @@ import {
   RepeatWrapping,
   SRGBColorSpace,
 } from 'three'
-import { makeCanvas, mulberry } from '../textures'
+import { makeCanvas, mulberry, texScale } from '../textures'
 
 /* =====================================================================
    Procedural PBR maps — the shared toolkit for making surfaces feel real.
@@ -166,6 +166,65 @@ export function normalizeField(f: Float32Array): Float32Array {
   return f
 }
 
+/* ---------- the lite half-step ---------- */
+
+/* Every map in this file is DATA — normal, roughness, height — and every
+   one of them is written with createImageData/putImageData, which address
+   device texels and never see a context transform. So `makeCanvas`'s
+   `scale` is no use here: the only honest way to store one of these at
+   half the side is to halve the FIELD first and fill the smaller buffer.
+
+   Halving the field beats generating a smaller field. A 2x2 box average
+   is the area integral of the four texels it replaces, so the tile keeps
+   the mean it had and its features only lose their finest octave — which
+   is what a downscale is supposed to do. Re-running fbmField at half the
+   size instead POINT-samples the same frequencies onto half as many
+   texels, and the top octaves of the maps here are already near the
+   Nyquist limit at full size (rubberMaps asks for 96 cells across 256 px;
+   plasticMaps' third octave is 192 across 256), so half of them would
+   alias into crawling hash noise rather than fade out. Averaging is also
+   free next to the fbm itself.
+
+   THE DESK. `texScale()` is exactly 1 on a desk and `liteHalf` returns
+   its argument unchanged, so `fieldCanvas`/`normalCanvas` run the loop
+   they always ran over the array they were handed. Not one branch below
+   can be entered at scale 1. */
+
+/** Smallest side a data map is allowed to keep on a phone. */
+const LITE_DATA_MIN = 64
+
+/** `size` on a desk; half of it on a phone, when halving is exact and
+    leaves a map worth sampling. Odd sizes are left alone — a 2x2 box
+    needs an even side, and nothing in the room passes one.
+    Exported so a generator that lays out its OWN buffers at `size` (the
+    floor, the walls, the wood grain in tex/room.ts) can shrink by the
+    same rule and with the same guarantee on a desk. */
+export function liteHalf(size: number): number {
+  if (texScale() === 1) return size
+  return size % 2 === 0 && size >= LITE_DATA_MIN * 2 ? size >> 1 : size
+}
+
+/** Area-average a size² field down to (size/2)². Wraps by construction:
+    every output texel is four neighbours that were already inside.
+    Exported for the same reason as `liteHalf`: a caller that draws its
+    own picture out of a field should shrink the FIELD (an area average
+    of what was there) rather than ask fbmField for a smaller one (a
+    point sample that aliases the top octaves into hash). */
+export function halveField(f: Float32Array, size: number): Float32Array {
+  const n = size >> 1
+  const out = new Float32Array(n * n)
+  for (let y = 0; y < n; y++) {
+    const r0 = y * 2 * size
+    const r1 = r0 + size
+    const o = y * n
+    for (let x = 0; x < n; x++) {
+      const c = x * 2
+      out[o + x] = (f[r0 + c] + f[r0 + c + 1] + f[r1 + c] + f[r1 + c + 1]) * 0.25
+    }
+  }
+  return out
+}
+
 /* ---------- field → textures ---------- */
 
 function data(canvas: HTMLCanvasElement, repeat: number): CanvasTexture {
@@ -180,16 +239,28 @@ function data(canvas: HTMLCanvasElement, repeat: number): CanvasTexture {
   return t
 }
 
-/** Grayscale canvas from a 0..1 field (optionally remapped lo..hi → 0..255). */
-export function fieldCanvas(f: Float32Array, size: number, lo = 0, hi = 1): HTMLCanvasElement {
-  const ctx = makeCanvas(size, size)
-  const img = ctx.createImageData(size, size)
+/** Grayscale canvas from a 0..1 field (optionally remapped lo..hi → 0..255).
+    Half-side on a phone unless `full` — pass `full` when the caller has
+    already shrunk the canvas the field was read off, so the two do not
+    stack. Every consumer in the app hands the result straight to a
+    CanvasTexture, so nothing reads a size off it. */
+export function fieldCanvas(
+  f: Float32Array,
+  size: number,
+  lo = 0,
+  hi = 1,
+  full = false,
+): HTMLCanvasElement {
+  const n = full ? size : liteHalf(size)
+  const src = n === size ? f : halveField(f, size)
+  const ctx = makeCanvas(n, n)
+  const img = ctx.createImageData(n, n)
   // one 32-bit write per texel (little-endian RGBA: A in the top byte)
   const px = new Uint32Array(img.data.buffer)
   const span = (hi - lo) * 255
   const off = lo * 255
-  for (let i = 0; i < f.length; i++) {
-    const r = off + f[i] * span
+  for (let i = 0; i < src.length; i++) {
+    const r = off + src[i] * span
     const v = r <= 0 ? 0 : r >= 255 ? 255 : Math.round(r)
     px[i] = 0xff000000 | (v << 16) | (v << 8) | v
   }
@@ -199,21 +270,32 @@ export function fieldCanvas(f: Float32Array, size: number, lo = 0, hi = 1): HTML
 
 /** Tangent-space normal canvas (OpenGL, +Y up) from a height field.
     `strength` ≈ how steep the surface is: 1 subtle, 4 pronounced. Wraps. */
-export function normalCanvas(h: Float32Array, size: number, strength: number): HTMLCanvasElement {
-  const ctx = makeCanvas(size, size)
-  const img = ctx.createImageData(size, size)
+export function normalCanvas(
+  h: Float32Array,
+  size: number,
+  strength: number,
+  full = false,
+): HTMLCanvasElement {
+  const n = full ? size : liteHalf(size)
+  const src = n === size ? h : halveField(h, size)
+  const ctx = makeCanvas(n, n)
+  const img = ctx.createImageData(n, n)
   const px = new Uint32Array(img.data.buffer)
-  const s = strength * size * 0.05
-  for (let y = 0; y < size; y++) {
-    const row = y * size
-    const up = ((y + 1) % size) * size
-    const dn = ((y - 1 + size) % size) * size
-    for (let x = 0; x < size; x++) {
-      const xl = x === 0 ? size - 1 : x - 1
-      const xr = x === size - 1 ? 0 : x + 1
+  // the slope this encodes is (dh/du) * strength * 0.1 whatever `n` is:
+  // a central difference spans 2/n of the tile, so scaling by n cancels
+  // the texel pitch out. Half the texels means the same surface, not a
+  // shallower one.
+  const s = strength * n * 0.05
+  for (let y = 0; y < n; y++) {
+    const row = y * n
+    const up = ((y + 1) % n) * n
+    const dn = ((y - 1 + n) % n) * n
+    for (let x = 0; x < n; x++) {
+      const xl = x === 0 ? n - 1 : x - 1
+      const xr = x === n - 1 ? 0 : x + 1
       // canvas rows run downward, texture V runs upward: flip Y
-      const nx = -(h[row + xr] - h[row + xl]) * s
-      const ny = (h[up + x] - h[dn + x]) * s
+      const nx = -(src[row + xr] - src[row + xl]) * s
+      const ny = (src[up + x] - src[dn + x]) * s
       const inv = 1 / Math.sqrt(nx * nx + ny * ny + 1)
       const r = Math.round((nx * inv * 0.5 + 0.5) * 255)
       const g = Math.round((ny * inv * 0.5 + 0.5) * 255)
@@ -330,7 +412,11 @@ export function rubberMaps(seed = 1, size = 256, repeat = 4): PbrMaps {
     Use as an alpha-blended map (or an emissive-free decal plane) on glass,
     glossy plastic and lacquer. `amount` 0..1. sRGB. */
 export function grimeTexture(seed = 1, size = 512, amount = 0.5): CanvasTexture {
-  const ctx = makeCanvas(size, size)
+  // the one generator here with no field behind it: smudges, whorls and
+  // specks, all laid down through the 2D API in design pixels, so the
+  // lite scale is exact — nothing reads this canvas back or composites
+  // another one into it
+  const ctx = makeCanvas(size, size, false, texScale())
   const rand = mulberry(seed)
   // broad smudges
   for (let i = 0; i < 26; i++) {

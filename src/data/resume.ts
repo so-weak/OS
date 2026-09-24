@@ -4,6 +4,11 @@
    invent facts, metrics or dates — if it is not here, it does not
    exist. Keep this file in step with public/SoubhikGhosh-Resume.pdf;
    the CRT renders that same PDF as SVG (see src/os/apps/Resume.tsx).
+
+   The resume is one page and the site is not, so a few true details
+   live here that the PDF has no room for. They carry `beyondResume:
+   true` and are NOT to be pruned when this file is re-transcribed from
+   a newer resume — "not on the resume" is not the same as "not true".
    ===================================================================== */
 
 /** Prefix a public-asset path with Vite's base URL so it resolves correctly
@@ -402,12 +407,30 @@ export const experience: Job[] = [
   },
 ]
 
+/* The one-page resume lists the B.Tech only — it has no room for school.
+   The site does, and these are real, so they stay. Anything marked
+   `beyondResume` is deliberately kept here across resume updates: do not
+   prune it the next time this file is re-transcribed. */
 export const education = [
   {
     degree: 'B.Tech, Computer Science and Engineering',
     school: 'KIIT, Bhubaneswar',
     score: '9.56 CGPA',
     period: '2018 – 2022',
+  },
+  {
+    degree: 'Class XII (CBSE)',
+    school: 'Delhi Public School, Dhanbad',
+    score: '90.4%',
+    period: '2018',
+    beyondResume: true,
+  },
+  {
+    degree: 'Class X (ICSE)',
+    school: 'De-Nobili School CMRI, Dhanbad',
+    score: '95%',
+    period: '2016',
+    beyondResume: true,
   },
 ]
 

@@ -1,5 +1,6 @@
 import { useSystem } from './store'
 import { afterReveal } from '../loadProgress'
+import { device } from '../device'
 
 /* =====================================================================
    SoubhikOS sound chip — every SFX is synthesized with WebAudio.
@@ -64,10 +65,36 @@ function createContext(): void {
        machine where paying this on the click hurts most
      - purely an optimisation: if nothing warms it, `unlock`/`out()`
        still build it on demand exactly as before.
+
+   TOUCH HAS NO PRESENCE. A finger does not hover. `pointerover` and
+   `touchstart` both arrive in the SAME task as the `pointerdown` that
+   unlocks, so no listener can win the race — whichever of them fires
+   first, the context still has to be standing before the task that
+   contains the tap, or the tap pays for it. There is no earlier signal
+   to listen for, which leaves exactly one lever: the fallback timer.
+   Measured under a 4x CPU throttle (a phone, roughly), the construction
+   is a 243 ms synchronous block, and it lands on the FIRST tap of a
+   visitor who reaches for the monitor before the timer fires — the
+   worst possible place, because that tap is also the one the whole site
+   is waiting for.
+
+   So a touch device gets a shorter fallback, and the number is the
+   opening dolly's own. Sampled every 100 ms from the reveal on a phone,
+   the camera moves 204 mm in the first sample and 18.5 mm at 1200 ms —
+   91% of the move is spent by then. And CameraRig clamps its own dt at
+   0.05 s, so a block does not make the camera jump to catch up: it
+   pauses the move and resumes from the same place, arriving on the same
+   pose. At 1200 ms that costs a pause in a crawl; on the tap it costs
+   the site's answer to the only thing the visitor has asked it. The
+   desk is untouched — a mouse has presence, warms on the first
+   `pointermove`, and falls back at SETTLE_MS exactly as before.
    --------------------------------------------------------------------- */
 
 /** the opening dolly has settled by here (ms after the reveal) */
 const SETTLE_MS = 2500
+/** ...and on touch, where nothing can warm it before the first tap, the
+    fallback comes in at 91% of that dolly instead of the end of it */
+const TOUCH_SETTLE_MS = 1200
 
 type IdleCb = () => void
 function idle(fn: IdleCb): void {
@@ -82,7 +109,10 @@ function idle(fn: IdleCb): void {
     that fire in a task of their own, BEFORE the click. `pointerdown`
     and `keydown` are deliberately absent — those are the gestures
     `unlock` already handles, and on a touch screen they arrive in the
-    same task as the tap, so there would be nothing left to win. */
+    same task as the tap, so there would be nothing left to win.
+    `touchstart` is absent for that same reason: it is dispatched in the
+    tap's own task, right after `pointerdown`, so adding it would buy a
+    listener and no time. Touch is served by TOUCH_SETTLE_MS instead. */
 const PRESENCE = ['pointermove', 'pointerover', 'wheel'] as const
 
 let warmArmed = false
@@ -105,7 +135,7 @@ function armWarm(): void {
   afterReveal(() => {
     if (ctx) return
     for (const e of PRESENCE) window.addEventListener(e, go, { passive: true })
-    timer = window.setTimeout(go, SETTLE_MS)
+    timer = window.setTimeout(go, device().pointer === 'touch' ? TOUCH_SETTLE_MS : SETTLE_MS)
   })
 }
 

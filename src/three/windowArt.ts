@@ -8,7 +8,7 @@ import {
   SRGBColorSpace,
 } from 'three'
 import { ROOM_CAM_POS, WINDOW } from './layout'
-import { makeCanvas, mulberry } from './textures'
+import { makeCanvas, mulberry, texScale } from './textures'
 import { fbmField, normalCanvas } from './tex/noise'
 
 /* =====================================================================
@@ -185,6 +185,46 @@ function scaledCopy(src: HTMLCanvasElement, w: number, h: number): HTMLCanvasEle
   return c
 }
 
+/* =====================================================================
+   THE LITE SCALE, AND THE ONE RULE THAT MAKES IT SAFE HERE
+
+   Most layers on this page are painted entirely through the 2D API, so
+   `makeCanvas`'s `scale` shrinks them exactly: the context is pre-scaled
+   and every coordinate, line width, shadow blur and gradient below stays
+   in design pixels. What the transform does NOT reach is a canvas
+   COMPOSITED into another canvas — `drawImage(img, x, y)` takes the
+   destination size from the source's own texels, so a half-size source
+   would land at half size inside a half-size destination and clip the
+   art into a corner. That is the whole hazard on this page, and there
+   are exactly five such composites. Every one of them now states its
+   destination rectangle in DESIGN units through `drawCover`, which at
+   scale 1 (the desk) hands the same three-argument call to the browser
+   it always did.
+   ===================================================================== */
+
+/** Draw `img` over the design rectangle `w`x`h` of a (possibly pre-scaled)
+    context. On a desk the source IS `w`x`h`, so this is the plain
+    three-argument blit the page has always made — byte for byte. */
+function drawCover(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLCanvasElement,
+  w: number,
+  h: number,
+  x = 0,
+  y = 0,
+): void {
+  if (img.width === w && img.height === h) ctx.drawImage(img, x, y)
+  else ctx.drawImage(img, x, y, w, h)
+}
+
+/** `blur` halves the real texels, so the same `levels` on a lite canvas
+    would smear twice as far across the picture. One halving fewer keeps
+    the bloom the same FRACTION of the layer it is on; never below one,
+    so a blur pass is still a blur. */
+function blurLevels(levels: number): number {
+  return texScale() === 1 ? levels : Math.max(1, levels - 1)
+}
+
 /** Cheap gaussian-ish blur: halve `levels` times, then double back up. */
 function blur(src: HTMLCanvasElement, levels: number): HTMLCanvasElement {
   let cur = src
@@ -193,17 +233,20 @@ function blur(src: HTMLCanvasElement, levels: number): HTMLCanvasElement {
   return cur
 }
 
-/** Add a bloom of `glow` onto `ctx` (additive). */
+/** Add a bloom of `glow` onto `ctx` (additive). `w`/`h` are the design
+    size of `ctx` — `glow` may be stored smaller than that on a phone. */
 function addGlow(
   ctx: CanvasRenderingContext2D,
   glow: HTMLCanvasElement,
   passes: [number, number][],
+  w: number,
+  h: number,
 ): void {
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
   for (const [levels, a] of passes) {
     ctx.globalAlpha = a
-    ctx.drawImage(blur(glow, levels), 0, 0)
+    drawCover(ctx, blur(glow, blurLevels(levels)), w, h)
   }
   ctx.restore()
 }
@@ -220,6 +263,16 @@ const SKY = LAYER.sky.f
 // dithering already breaks up banding); 640 halves the pixel count and is
 // still far finer than the eye can resolve a colour ramp at.
 function gradientTile(stops: [number, RGB][], seed: number, w = 128, h = 640): CanvasTexture {
+  // laid out with createImageData/putImageData, which address device
+  // texels and never see a context transform — so this one shrinks by
+  // its own PARAMETERS. The whole body below is written in terms of w
+  // and h, and skyRepeat() is a world-space tiling count that does not
+  // depend on either, so halving both is exact. Desk: texScale() is 1
+  // and w/h arrive untouched.
+  if (texScale() !== 1) {
+    w = Math.max(2, w >> 1)
+    h = Math.max(2, h >> 1)
+  }
   const ctx = makeCanvas(w, h, true)
   const img = ctx.createImageData(w, h)
   const rand = mulberry(seed)
@@ -300,7 +353,10 @@ export function starField(): PointCloud {
     northern hemisphere, so a waxing moon is lit on the right. */
 function makeMoonTexture(age: number): CanvasTexture {
   const S = 512
-  const ctx = makeCanvas(S, S, true)
+  // halo, disc, terminator and limb are all 2D-API marks in design
+  // pixels; moonFrame() sizes the plane from the 512/88 design numbers,
+  // not from the canvas, so the moon keeps its place at any store size
+  const ctx = makeCanvas(S, S, true, texScale())
   const cx = S / 2
   const cy = S / 2
   const r = 88
@@ -320,7 +376,7 @@ function makeMoonTexture(age: number): CanvasTexture {
   ctx.fillRect(0, 0, S, S)
 
   // the lit moon, painted whole on its own canvas
-  const M = makeCanvas(2 * r, 2 * r, true)
+  const M = makeCanvas(2 * r, 2 * r, true, texScale())
   const mc = r
   const base = M.createRadialGradient(mc - r * 0.15, mc - r * 0.1, r * 0.1, mc, mc, r)
   base.addColorStop(0, '#f6f1e2')
@@ -418,7 +474,7 @@ function makeMoonTexture(age: number): CanvasTexture {
   }
   ctx.closePath()
   ctx.clip()
-  ctx.drawImage(M.canvas, cx - r, cy - r)
+  drawCover(ctx, M.canvas, 2 * r, 2 * r, cx - r, cy - r)
   ctx.restore()
 
   // soften the terminator with a few fading strokes of the dark tone
@@ -587,17 +643,21 @@ function paintClouds(o: CloudOpts): HTMLCanvasElement {
     }
   }
   sm.putImageData(img, 0, 0)
-  const ctx = makeCanvas(fr.w, fr.h, true)
+  // `sm` keeps its full third-resolution size: it is an ImageData buffer
+  // (no transform reaches it) and it is the SOURCE of the upscale below,
+  // so leaving it alone costs 0.1 MB and buys back the detail the
+  // smaller destination would otherwise have lost.
+  const ctx = makeCanvas(fr.w, fr.h, true, texScale())
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(sm.canvas, 0, 0, fr.w, fr.h)
   // the upscale leaves stair-steps on the edges: blur, then lay a little of
   // the sharper picture back over it
-  const soft = blur(ctx.canvas, 2)
-  const out = makeCanvas(fr.w, fr.h, true)
-  out.drawImage(soft, 0, 0)
+  const soft = blur(ctx.canvas, blurLevels(2))
+  const out = makeCanvas(fr.w, fr.h, true, texScale())
+  drawCover(out, soft, fr.w, fr.h)
   out.globalAlpha = 0.4
-  out.drawImage(ctx.canvas, 0, 0)
+  drawCover(out, ctx.canvas, fr.w, fr.h)
   return out.canvas
 }
 
@@ -1151,8 +1211,16 @@ function paintCityLayer(layer: LayerName, night: boolean): HTMLCanvasElement {
   const pxU = layer === 'far' ? 270 : layer === 'mid' ? 280 : 320
   const frame = LAYER[layer].f
   const fr = new Fr(frame, pxU)
-  const ctx = makeCanvas(fr.w, fr.h, true)
-  const glow = makeCanvas(fr.w, fr.h, true)
+  // the skylines are the single heaviest thing on this page: three
+  // layers, each a painted canvas plus a glow canvas plus the blur
+  // pyramid addGlow builds from it. Every mark in paintBuilding /
+  // paintNear / paintPalm / paintTree is a fillRect, stroke, ellipse or
+  // gradient in design pixels — window grids, pilasters, mist, all of
+  // it — so a pre-scaled context shrinks the lot exactly. The one thing
+  // that is not a 2D-API mark is the glow composite, and that now names
+  // its destination rectangle.
+  const ctx = makeCanvas(fr.w, fr.h, true, texScale())
+  const glow = makeCanvas(fr.w, fr.h, true, texScale())
 
   if (layer !== 'near') {
     const list = skyline(layer === 'far' ? FAR_CITY : MID_CITY)
@@ -1169,11 +1237,17 @@ function paintCityLayer(layer: LayerName, night: boolean): HTMLCanvasElement {
   }
 
   if (night) {
-    addGlow(ctx, glow.canvas, [
-      [1, 0.75],
-      [3, 0.85],
-      [5, 0.6],
-    ])
+    addGlow(
+      ctx,
+      glow.canvas,
+      [
+        [1, 0.75],
+        [3, 0.85],
+        [5, 0.6],
+      ],
+      fr.w,
+      fr.h,
+    )
   }
   // haze pooled low in the layer: the deeper the layer, the more of it
   if (style.mist) {
@@ -1410,7 +1484,9 @@ function paintNear(
 
 function makeBokeh(): CanvasTexture {
   const fr = new Fr(LAYER.bokeh.f, 170) // out-of-focus by design; needs no fine texel grid
-  const ctx = makeCanvas(fr.w, fr.h, true)
+  // discs, shadows and radial cores, all 2D-API: shadowBlur and lineWidth
+  // are user-space quantities, so they shrink with the transform too
+  const ctx = makeCanvas(fr.w, fr.h, true, texScale())
   const rand = mulberry(77)
   const sodium = hex('#ffb347')
   const warm = hex('#ffe2b0')
@@ -1585,7 +1661,10 @@ export function makeFlashTexture(): CanvasTexture {
 export function makeBoltAtlas(): CanvasTexture {
   const W = 512
   const H = 1024
-  const ctx = makeCanvas(W * 3, H)
+  // three jagged strokes with shadowBlur haloes and nothing else; the
+  // atlas is split by repeat.set(1/3, 1), which is a UV fraction and so
+  // survives any store size
+  const ctx = makeCanvas(W * 3, H, false, texScale())
   const rand = mulberry(1313)
   const jag = (
     x0: number,
@@ -1718,7 +1797,8 @@ export function makeDaySky(hour: number): CanvasTexture {
 /** Soft sun: white-hot core, a wide glow. Additive. */
 function makeSunTexture(): CanvasTexture {
   const S = 512
-  const ctx = makeCanvas(S, S)
+  // one radial gradient: nothing to lose to a smaller store
+  const ctx = makeCanvas(S, S, false, texScale())
   const c = S / 2
   const g = ctx.createRadialGradient(c, c, 0, c, c, c)
   g.addColorStop(0, 'rgba(255,255,255,1)')
@@ -1786,7 +1866,7 @@ export function makeDayCity(layer: 'far' | 'mid' | 'near'): CanvasTexture {
 export function makeRainStreaks(): CanvasTexture {
   const w = 256
   const h = 1024
-  const ctx = makeCanvas(w, h)
+  const ctx = makeCanvas(w, h, false, texScale())
   const rand = mulberry(2024)
   for (let i = 0; i < 70; i++) {
     const x = rand() * w
@@ -1846,7 +1926,7 @@ export function makeRainStreaks(): CanvasTexture {
 export function makeRainBeads(): CanvasTexture {
   const w = 768
   const h = 1024
-  const ctx = makeCanvas(w, h)
+  const ctx = makeCanvas(w, h, false, texScale())
   const rand = mulberry(515)
   const drop = (x: number, y: number, r: number, stretch: number, a: number) => {
     ctx.save()
@@ -1936,7 +2016,9 @@ export interface Gobo {
     colour space on purpose: the shader multiplies the light by it. */
 export function makeGobo(): Gobo {
   const size = 512
-  const ctx = makeCanvas(size, size)
+  // a light's projection map, drawn (and REDRAWN by paint() below, on the
+  // same pre-scaled context) with nothing but fillRect in design pixels
+  const ctx = makeCanvas(size, size, false, texScale())
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, size, size)
   const texture = new CanvasTexture(ctx.canvas)
@@ -2002,8 +2084,19 @@ export interface ClockFace {
 export function makeClockFace(): ClockFace {
   const S = 512
   const c = S / 2
+  // `ctx` is the DIAL — twelve numerals, a maker's mark and IST, read
+  // off a wall. It keeps every one of its 512 design texels on every
+  // device; blurred lettering is the one thing this room does not do.
+  //
+  // `rel` is not lettering. It is a black-and-white height mask that
+  // exists only to be blurred into a field and turned into a normal map
+  // so the printing catches the lamp, and it is drawn with the same
+  // strokes and fills in the same design pixels, so a phone stores it at
+  // half the side. That halves the relief's blur pyramid too — three
+  // more canvases of the same size each — and the dial itself is
+  // untouched either way.
   const ctx = makeCanvas(S, S, true)
-  const rel = makeCanvas(S, S, true)
+  const rel = makeCanvas(S, S, true, texScale())
   rel.fillStyle = '#000'
   rel.fillRect(0, 0, S, S)
   // paper: warm cream, yellowed toward the rim
@@ -2093,7 +2186,11 @@ export function makeClockFace(): ClockFace {
   map.minFilter = LinearMipmapLinearFilter
   map.magFilter = LinearFilter
   map.needsUpdate = true
-  const normalMap = dataTexture(normalCanvas(fieldFromCanvas(rel.canvas), S, 1.1))
+  // fieldFromCanvas measures `rel` in TEXELS, so the field it returns is
+  // rel.canvas.width square, not S square. Pass the real side (S on a
+  // desk) and `full`, so noise.ts does not halve an already-halved map.
+  const relS = rel.canvas.width
+  const normalMap = dataTexture(normalCanvas(fieldFromCanvas(rel.canvas), relS, 1.1, true))
   return { map, normalMap }
 }
 
@@ -2106,8 +2203,11 @@ export interface Plate {
 export function makeClockPlate(text = 'BENGALURU'): Plate {
   const W = 512
   const H = 93
+  // same split as the dial: the brass with BENGALURU engraved into it
+  // keeps its design texels, the relief mask behind the normal map does
+  // not (see makeClockFace)
   const ctx = makeCanvas(W, H, true)
-  const rel = makeCanvas(W, H, true)
+  const rel = makeCanvas(W, H, true, texScale())
   const g = ctx.createLinearGradient(0, 0, 0, H)
   g.addColorStop(0, '#dcbb6c')
   g.addColorStop(0.45, '#c59f4e')
@@ -2162,13 +2262,18 @@ export function makeClockPlate(text = 'BENGALURU'): Plate {
   map.magFilter = LinearFilter
   map.needsUpdate = true
   // relief needs a square field for normalCanvas: pad to W×W, crop by UV
-  const sq = makeCanvas(W, W, true)
+  const sq = makeCanvas(W, W, true, texScale())
   sq.fillStyle = '#808080'
   sq.fillRect(0, 0, W, W)
-  sq.drawImage(rel.canvas, 0, (W - H) / 2)
-  const nCanvas = normalCanvas(fieldFromCanvas(sq.canvas), W, 0.7)
-  const crop = makeCanvas(W, H)
-  crop.drawImage(nCanvas, 0, (W - H) / 2, W, H, 0, 0, W, H)
+  drawCover(sq, rel.canvas, W, H, 0, (W - H) / 2)
+  const nCanvas = normalCanvas(fieldFromCanvas(sq.canvas), sq.canvas.width, 0.7, true)
+  const crop = makeCanvas(W, H, false, texScale())
+  // the crop's SOURCE rectangle is in nCanvas's own texels (drawImage
+  // never sees a transform on that side), so scale it by how big nCanvas
+  // actually came out. On a desk k is 1 and these are the same nine
+  // arguments the plate has always been cut with.
+  const k = nCanvas.width / W
+  crop.drawImage(nCanvas, 0, ((W - H) / 2) * k, W * k, H * k, 0, 0, W, H)
   const normalMap = dataTexture(crop.canvas)
   return { map, normalMap }
 }

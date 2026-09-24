@@ -705,6 +705,21 @@
    Chrome furniture (bar heights, hit targets, gaps) is free of the
    pixel grid, so it takes whatever a thumb needs — usually 2x, a
    little more where a 2x target would still be too mean to hit.
+
+   AND WHY THERE IS NO TABLET BLOCK. Measured the same way (the glass's
+   own getBoundingClientRect at zoom, / 1024), the composite is 0.6451x
+   at the narrow edge of the tablet band (701px), 0.7068x at 768x1024,
+   0.9444x at 1024x768 — against 0.3586x on the phone and 1.107x on the
+   desk. So a 16px glyph arrives as 10.3 / 11.3 / 15.1 CSS px on a
+   tablet. The doubling above exists to put a phone's body text at
+   32 x 0.3586 = 11.5 px; a tablet is ALREADY there, untouched, and
+   doubling it would land body text at 21-30 px — twice what this block
+   is aiming for. Hit targets say the same: a tablet's untreated taskbar
+   measures 19.4 / 21.2 / 28.3 CSS px against the 21.5 px this block
+   grows a phone's to, and its titlebar buttons 11.6 / 12.7 / 17.0 px
+   against the phone's treated 15.8 px. `[data-tier='tablet']` matching
+   nothing here is the answer, not an oversight: the 0.7x glass does for
+   a tablet exactly what 2x type does for a phone.
    ===================================================================== */
 
 /* ---------------------------------------------------------------------

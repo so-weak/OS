@@ -41,12 +41,15 @@ import {
   makeCanvas,
   mulberry,
   pixelTextWidth,
+  texScale,
   type SurfaceMaps,
 } from '../textures'
 import {
   fabricMaps,
   fbmField,
   fieldCanvas,
+  halveField,
+  liteHalf,
   mix,
   normalCanvas,
   normalizeField,
@@ -123,8 +126,50 @@ export function colorTexture(
   return t
 }
 
+/* =====================================================================
+   THE LITE SCALE IN THIS FILE
+
+   Almost nothing here can take `makeCanvas`'s `scale`. These generators
+   fill createImageData / ImageData buffers addressed in DEVICE texels
+   (the floor, both side walls, the wall grime, the rug, the wood grain,
+   the cardboard, the plaster) or read their own canvas back with
+   getImageData (the cork board), and a context transform reaches none of
+   that. So they shrink the honest way instead: their own W/H/S/CELL is
+   halved and the whole body follows, because every one of them is
+   already written in terms of it.
+
+   Where a generator makes its picture out of an fbm field, the FIELD is
+   area-averaged down (`halveField`) rather than re-generated smaller:
+   these fields carry octaves near the Nyquist limit at full size (the
+   floor's grain is 96 cells across, the cork fibre 64, the wood pores
+   120), and asking fbmField for half as many texels would alias them
+   into crawling hash instead of fading them out.
+
+   Where pixel-sized marks are scattered over a canvas by count (the cork
+   speckle, the floor's knots and scratches), the marks scale with the
+   canvas and the counts scale with its area, so the surface keeps the
+   same density rather than doubling it.
+
+   The handful of generators that are pure 2D-API painting with no
+   readback take `texScale()` directly and do not move a coordinate.
+
+   THE DESK. `texScale()` is exactly 1 at 1440x900; `liteSide` and
+   `liteHalf` both return their argument, `halveField` is never called,
+   and every branch below is the one that ran before. Lettering is
+   exempt outright — see makeBookAtlas / makeCardAtlas / makeBinderLabels.
+   ===================================================================== */
+
+/** A decal's stored side: unchanged on a desk, halved on a phone. */
+function liteSide(n: number): number {
+  const s = texScale()
+  return s === 1 ? n : Math.max(1, Math.round(n * s))
+}
+
 /** Halve/quarter a canvas (cheap roughness maps). */
 function shrink(src: HTMLCanvasElement, size: number): HTMLCanvasElement {
+  // already the asked-for size (a lite source that shrank upstream):
+  // copying it would only spend another canvas to change nothing
+  if (src.width === size && src.height === size) return src
   const ctx = makeCanvas(size, size)
   ctx.imageSmoothingEnabled = true
   ctx.drawImage(src, 0, 0, size, size)
@@ -494,9 +539,17 @@ export const SWITCH = { x: 1.9, y: 1.2 } as const
     and fine tooth over `base`. */
 export function plasterColor(base: string, seed: number, size = 512): HTMLCanvasElement {
   const [r0, g0, b0] = hexRGB(base)
-  const mott = fbmField(size, seed, { octaves: 4, freq: 3, persistence: 0.55 })
-  const roll = fbmField(size, seed + 4, { octaves: 2, freqX: 2, freqY: 22, persistence: 0.6 })
-  const fine = fbmField(size, seed + 7, { octaves: 1, freq: 80 })
+  let mott = fbmField(size, seed, { octaves: 4, freq: 3, persistence: 0.55 })
+  let roll = fbmField(size, seed + 4, { octaves: 2, freqX: 2, freqY: 22, persistence: 0.6 })
+  let fine = fbmField(size, seed + 7, { octaves: 1, freq: 80 })
+  const n = liteHalf(size)
+  if (n !== size) {
+    // area-average the three fields, then let the loop below run at n
+    mott = halveField(mott, size)
+    roll = halveField(roll, size)
+    fine = halveField(fine, size)
+    size = n
+  }
   const ctx = makeCanvas(size, size)
   const img = ctx.createImageData(size, size)
   for (let i = 0; i < size * size; i++) {
@@ -606,6 +659,12 @@ export function bakeSideWall(
   H = 512,
 ): CanvasTexture {
   const [r0, g0, b0] = hexRGB(base)
+  // the mottling field is its own fixed 256 and is sampled by FRACTION
+  // of W/H below, so only the bake's own resolution moves here; every
+  // mark after the ImageData pass is placed through X()/Y()/mpp, which
+  // are all derived from W and H
+  W = liteSide(W)
+  H = liteSide(H)
   const F = 256
   const mott = fbmField(F, seed, { octaves: 5, freq: 2, persistence: 0.55 })
   const roll = fbmField(F, seed + 3, { octaves: 3, freqX: 2, freqY: 14, persistence: 0.6 })
@@ -660,6 +719,10 @@ export function bakeSideWall(
     RGBA over the plaster). Covers x −2.2…2.4, y 0…2.6. The window's
     opening stays clear so nothing dims the glass. */
 export function makeWallGrime(seed = 5, W = 1024, H = 576, anisotropy = 4): CanvasTexture {
+  // same shape as bakeSideWall: an ImageData pass written in px/W, py/H
+  // and a handful of smudges placed through X()/Y()/mpp
+  W = liteSide(W)
+  H = liteSide(H)
   const ctx = makeCanvas(W, H, true)
   const img = ctx.createImageData(W, H)
   const F = 256
@@ -759,12 +822,25 @@ export function* makeFloorMapsSteps(
   seed = 5,
   anisotropy = 8,
 ): Generator<void, SurfaceMaps, void> {
-  const S = 1024
+  // DESIGN size. Everything below is written in terms of S, and K is
+  // how much of it a phone actually stores — so the twelve boards, their
+  // joints, the knots and the scratches all land in the same places,
+  // and only the texel pitch changes. The two grain fields are drawn at
+  // the full 1024 and area-averaged down: freqX 96 is already 10 texels
+  // a cell at full size, and re-rolling it at 512 would turn the grain
+  // into noise instead of softening it.
+  const DESIGN = 1024
+  const S = liteHalf(DESIGN)
+  const K = S / DESIGN
   const COLS = 12
   const rand = mulberry(seed)
   const [r0, g0, b0] = hexRGB(base)
-  const grain = fbmField(S, seed + 1, { octaves: 2, freqX: 96, freqY: 3, persistence: 0.55 })
-  const figure = fbmField(S, seed + 2, { octaves: 2, freqX: 9, freqY: 2, persistence: 0.5 })
+  let grain = fbmField(DESIGN, seed + 1, { octaves: 2, freqX: 96, freqY: 3, persistence: 0.55 })
+  let figure = fbmField(DESIGN, seed + 2, { octaves: 2, freqX: 9, freqY: 2, persistence: 0.5 })
+  if (S !== DESIGN) {
+    grain = halveField(grain, DESIGN)
+    figure = halveField(figure, DESIGN)
+  }
   yield
 
   interface Board {
@@ -817,8 +893,10 @@ export function* makeFloorMapsSteps(
   const colour = new Uint8ClampedArray(S * S * 4)
   const height = new Float32Array(S * S)
   const rough = new Float32Array(S * S)
-  const GAP = 1.0
-  const BEVEL = 3.0
+  // the seam between boards, in texels: a fixed 1 and 3 would read
+  // twice as wide on half as many texels
+  const GAP = 1.0 * K
+  const BEVEL = 3.0 * K
   for (let y = 0; y < S; y++) {
     if (y === S / 2) yield
     for (let x = 0; x < S; x++) {
@@ -862,7 +940,7 @@ export function* makeFloorMapsSteps(
     const w = colX[c + 1] - colX[c]
     const lx = kx - colX[c]
     if (lx < 12 || lx > w - 12) continue
-    const kr = 4 + rand() * 4
+    const kr = (4 + rand() * 4) * K
     const R = kr * 2.6
     for (let dy = -R; dy <= R; dy++) {
       for (let dx = -R * 1.5; dx <= R * 1.5; dx++) {
@@ -887,7 +965,7 @@ export function* makeFloorMapsSteps(
     let x = rand() * S
     let y = rand() * S
     const a = Math.PI / 2 + (rand() - 0.5) * 0.7
-    const len = 10 + rand() * 46
+    const len = (10 + rand() * 46) * K
     const lighten = 1.05 + rand() * 0.1
     for (let s = 0; s < len; s++) {
       const px = Math.floor(x + S) % S
@@ -911,8 +989,10 @@ export function* makeFloorMapsSteps(
   yield
   // the normal map does the work; SurfaceMaps still wants a bumpMap for older
   // consumers, so hand it a cheap 128² sampling of the same height
-  const bumpMap = dataTexture(coarseHeight(height, S, 128), anisotropy)
-  const roughnessMap = dataTexture(shrink(fieldCanvas(rough, S, 0, 1), 512), anisotropy)
+  const bumpMap = dataTexture(coarseHeight(height, S, liteSide(128)), anisotropy)
+  // fieldCanvas already halves on a phone, so the shrink target has to
+  // move with it — otherwise this would UPSCALE the map it just made
+  const roughnessMap = dataTexture(shrink(fieldCanvas(rough, S, 0, 1), liteSide(512)), anisotropy)
   return { map, bumpMap, roughnessMap, normalMap }
 }
 
@@ -939,7 +1019,9 @@ function coarseHeight(h: Float32Array, S: number, size: number): HTMLCanvasEleme
     a dulled, lightened path where the chair rolls and where feet cross
     the boards, radial caster scuffs, a few spilled-dust smudges. */
 export function makeFloorWear(seed = 8, W = 768, H = 652, anisotropy = 4): CanvasTexture {
-  const ctx = makeCanvas(W, H)
+  // a decal of smudges and caster arcs, drawn entirely through the 2D
+  // API in design pixels: the lite scale is exact here
+  const ctx = makeCanvas(W, H, false, texScale())
   const rand = mulberry(seed)
   const mpp = W / 4.6
   // world (x,z) → canvas. The plane spans x −2.2…2.4, z −1.6…2.3.
@@ -1057,7 +1139,9 @@ export function makeRugMaps(seed = 3, anisotropy = 8): {
 } {
   const GW = 128
   const GH = 152
-  const CELL = 6
+  // the design is resolved once per CELL, so halving the cell keeps
+  // every knot of the pattern and only halves the texels under it
+  const CELL = texScale() === 1 ? 6 : 3
   const W = GW * CELL
   const H = GH * CELL
   const rand = mulberry(seed)
@@ -1069,6 +1153,7 @@ export function makeRugMaps(seed = 3, anisotropy = 8): {
   for (let j = 0; j < GH; j++) rowK[j] = 1 + (rand() - 0.5) * 0.07
   const colK = new Float32Array(GW)
   for (let i = 0; i < GW; i++) colK[i] = 1 + (rand() - 0.5) * 0.03
+  const WEAVE = CELL === 6
   const cloud = fbmField(128, seed + 2, { octaves: 4, freq: 3, persistence: 0.55 })
   // the design, resolved once per cell — not once per pixel
   const cells = new Uint8Array(GW * GH * 3)
@@ -1089,8 +1174,14 @@ export function makeRugMaps(seed = 3, anisotropy = 8): {
     for (let x = 0; x < W; x++) {
       const i = (x / CELL) | 0
       const co = (j * GW + i) * 3
-      // thread structure: warp every 3 px, weft every 3 px, plus noise
-      const thread = (x % 3 === 0 ? 0.96 : 1) * (y % 3 === 0 ? 0.97 : 1) * (0.97 + rand() * 0.06)
+      // thread structure: warp every 3 px, weft every 3 px, plus noise.
+      // At CELL 3 a 3 px grid would be one line per cell instead of two,
+      // so a phone drops the grid and keeps its mean brightness
+      // (0.98667 x 0.99) as a constant — at 0.4 screen px a thread it
+      // was never going to resolve anyway.
+      const thread =
+        (WEAVE ? (x % 3 === 0 ? 0.96 : 1) * (y % 3 === 0 ? 0.97 : 1) : 0.9768) *
+        (0.97 + rand() * 0.06)
       const cl = cloud[(((y * 128) / H) | 0) * 128 + (((x * 128) / W) | 0)]
       let k = rowK[j] * colK[i] * thread * (0.94 + cl * 0.12)
       // the middle is where feet and casters live: faded and dusty
@@ -1182,9 +1273,16 @@ export interface GrainMaps {
     pores. Colour, normal and roughness at 256²; the caller sets repeat. */
 export function makeGrainMaps(base: string, seed = 2, size = 256, anisotropy = 8): GrainMaps {
   const [r0, g0, b0] = hexRGB(base)
-  const streak = fbmField(size, seed, { octaves: 4, freqX: 2, freqY: 44, persistence: 0.62 })
-  const figure = fbmField(size, seed + 1, { octaves: 3, freqX: 3, freqY: 7, persistence: 0.55 })
-  const pores = fbmField(size, seed + 2, { octaves: 2, freqX: 30, freqY: 120, persistence: 0.6 })
+  let streak = fbmField(size, seed, { octaves: 4, freqX: 2, freqY: 44, persistence: 0.62 })
+  let figure = fbmField(size, seed + 1, { octaves: 3, freqX: 3, freqY: 7, persistence: 0.55 })
+  let pores = fbmField(size, seed + 2, { octaves: 2, freqX: 30, freqY: 120, persistence: 0.6 })
+  const n = liteHalf(size)
+  if (n !== size) {
+    streak = halveField(streak, size)
+    figure = halveField(figure, size)
+    pores = halveField(pores, size)
+    size = n
+  }
   const ctx = makeCanvas(size, size)
   const img = ctx.createImageData(size, size)
   const height = new Float32Array(size * size)
@@ -1753,7 +1851,7 @@ export function floppyStackGeo(): BufferGeometry {
    it only ever ADDS light: a hint of reflection at any camera angle.
    --------------------------------------------------------------------- */
 export function makeGlassSheen(): CanvasTexture {
-  const ctx = makeCanvas(128, 128)
+  const ctx = makeCanvas(128, 128, false, texScale())
   ctx.fillStyle = '#000'
   ctx.fillRect(0, 0, 128, 128)
   const g = ctx.createLinearGradient(0, 0, 128, 128)
@@ -1820,7 +1918,7 @@ export function leafGeometry(len = 0.26, wid = 0.12, rows = 8, cols = 4): Buffer
 export function makeLeafTexture(seed = 3): CanvasTexture {
   const W = 128
   const H = 256
-  const ctx = makeCanvas(W, H)
+  const ctx = makeCanvas(W, H, false, texScale())
   const rand = mulberry(seed)
   const g = ctx.createLinearGradient(0, H, 0, 0)
   g.addColorStop(0, '#2a5a30')
@@ -1939,14 +2037,19 @@ export interface CorkMaps {
 
 /** Natural cork: tan granules of every size, dark flecks, pits. 0.44 × 0.30 m. */
 export function makeCorkMaps(seed = 6): CorkMaps {
-  const W = 512
-  const H = 352
+  // getImageData below reads this canvas back in TEXELS, so the board
+  // shrinks by its own W/H rather than by a context transform. The
+  // speckle scales with K and its COUNT with K², so the grain keeps the
+  // density it has on a desk instead of doubling it.
+  const W = liteSide(512)
+  const H = liteSide(352)
+  const K = W / 512
   const ctx = makeCanvas(W, H, true)
   const rand = mulberry(seed)
   ctx.fillStyle = '#9c7145'
   ctx.fillRect(0, 0, W, H)
-  for (let i = 0; i < 7000; i++) {
-    const r = 0.8 + rand() * rand() * 3.4
+  for (let i = 0; i < Math.round(7000 * K * K); i++) {
+    const r = (0.8 + rand() * rand() * 3.4) * K
     const light = rand()
     ctx.fillStyle =
       light < 0.4
@@ -1958,9 +2061,9 @@ export function makeCorkMaps(seed = 6): CorkMaps {
     ctx.ellipse(rand() * W, rand() * H, r * (0.8 + rand() * 0.6), r, rand() * 3, 0, Math.PI * 2)
     ctx.fill()
   }
-  for (let i = 0; i < 700; i++) {
+  for (let i = 0; i < Math.round(700 * K * K); i++) {
     ctx.fillStyle = `rgba(36,22,12,${0.3 + rand() * 0.4})`
-    ctx.fillRect(rand() * W, rand() * H, 1 + rand() * 2, 1 + rand() * 2)
+    ctx.fillRect(rand() * W, rand() * H, (1 + rand() * 2) * K, (1 + rand() * 2) * K)
   }
   const map = colorTexture(ctx.canvas, 8, false)
   // height from luminance, then a normal map from it
@@ -2529,9 +2632,16 @@ export function boxesGeo(): { boxes: BufferGeometry; trim: BufferGeometry } {
     UVs from boxUV(geo, 4): one tile ≈ 25 cm. */
 export function makeCardboardMaps(seed = 13, size = 256): GrainMaps {
   const [r0, g0, b0] = hexRGB('#a98358')
-  const broad = fbmField(size, seed, { octaves: 4, freq: 3, persistence: 0.5 })
-  const fibre = fbmField(size, seed + 1, { octaves: 3, freq: 64, persistence: 0.55 })
-  const long = fbmField(size, seed + 2, { octaves: 3, freqX: 4, freqY: 90, persistence: 0.6 })
+  let broad = fbmField(size, seed, { octaves: 4, freq: 3, persistence: 0.5 })
+  let fibre = fbmField(size, seed + 1, { octaves: 3, freq: 64, persistence: 0.55 })
+  let long = fbmField(size, seed + 2, { octaves: 3, freqX: 4, freqY: 90, persistence: 0.6 })
+  const n = liteHalf(size)
+  if (n !== size) {
+    broad = halveField(broad, size)
+    fibre = halveField(fibre, size)
+    long = halveField(long, size)
+    size = n
+  }
   const ctx = makeCanvas(size, size)
   const img = ctx.createImageData(size, size)
   const height = new Float32Array(size * size)
@@ -2599,7 +2709,7 @@ export function heartLeafGeometry(len = 0.056, wid = 0.05, rows = 8, cols = 4): 
 export function makePothosTexture(seed = 5): CanvasTexture {
   const W = 128
   const H = 128
-  const ctx = makeCanvas(W, H)
+  const ctx = makeCanvas(W, H, false, texScale())
   const rand = mulberry(seed)
   ctx.fillStyle = '#4c8a34'
   ctx.fillRect(0, 0, W, H)
@@ -2713,7 +2823,7 @@ export function pothosLayout(
 export function makeBluePotTexture(): CanvasTexture {
   const W = 256
   const H = 128
-  const ctx = makeCanvas(W, H)
+  const ctx = makeCanvas(W, H, false, texScale())
   ctx.fillStyle = '#f0eee4'
   ctx.fillRect(0, 0, W, H)
   const blue = '#20408f'
@@ -2776,7 +2886,7 @@ export function bluePotGeo(): { pot: BufferGeometry; soil: BufferGeometry } {
 export function makeMandalaArt(): CanvasTexture {
   const W = 240
   const H = 300
-  const ctx = makeCanvas(W, H)
+  const ctx = makeCanvas(W, H, false, texScale())
   ctx.fillStyle = '#efe6cf'
   ctx.fillRect(0, 0, W, H)
   const cx = W / 2
@@ -2852,7 +2962,7 @@ function finishPixel(ctx: CanvasRenderingContext2D): CanvasTexture {
 /** Block-printed indigo cloth: rows of little white flower stamps. */
 export function makeBlockPrint(): CanvasTexture {
   const S = 256
-  const ctx = makeCanvas(S, S)
+  const ctx = makeCanvas(S, S, false, texScale())
   const rand = mulberry(19)
   ctx.fillStyle = '#243a78'
   ctx.fillRect(0, 0, S, S)
