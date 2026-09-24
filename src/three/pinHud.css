@@ -45,8 +45,31 @@
   text-align: center;
   cursor: default;
 }
-.pin-back:hover,
-.pin-step:hover {
+/* a mouse gets the lit plate; on a finger :hover latches on after the
+   tap and the plate stays lit for nothing, so touch takes the press
+   state instead. `:not(.pin-hud--touch)` rather than a hover media
+   query — device.ts is the one place allowed to judge the machine. */
+.pin-hud:not(.pin-hud--touch) .pin-back:hover,
+.pin-hud:not(.pin-hud--touch) .pin-step:hover {
+  background: rgba(40, 28, 12, 0.9);
+  border-color: rgba(224, 193, 106, 0.9);
+}
+
+/* ---------- the same brass, cut for a fingertip ----------
+   18px VT323 in 6px of padding is a 31px target; a fingertip is 44.
+   touch-action kills the double-tap zoom that would otherwise swallow
+   every second press on the stepper. */
+.pin-hud--touch .pin-back,
+.pin-hud--touch .pin-step,
+.pin-hud--touch .pin-count {
+  touch-action: manipulation;
+  padding: 12px 18px;
+}
+.pin-hud--touch .pin-steps {
+  gap: 10px;
+}
+.pin-hud--touch .pin-back:active,
+.pin-hud--touch .pin-step:active {
   background: rgba(40, 28, 12, 0.9);
   border-color: rgba(224, 193, 106, 0.9);
 }

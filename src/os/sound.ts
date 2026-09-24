@@ -1,10 +1,11 @@
 import { useSystem } from './store'
+import { afterReveal } from '../loadProgress'
 
 /* =====================================================================
    SoubhikOS sound chip — every SFX is synthesized with WebAudio.
-   No audio files. A single lazy AudioContext is created on the first
-   user gesture (pointerdown/keydown), StrictMode-safe because all state
-   lives at module level. Every play* function:
+   No audio files. A single AudioContext lives at module level (so it is
+   StrictMode-safe), suspended until the visitor's first gesture. Every
+   play* function:
      - is a silent no-op while useSystem.muted is true
      - never throws, even if audio is unavailable or suspended
    ===================================================================== */
@@ -29,6 +30,85 @@ function createContext(): void {
   }
 }
 
+/* ---------------------------------------------------------------------
+   Warming — why the context is built before anyone asks for a sound.
+
+   Measured in Chromium at 1440x900 (see the click profile): the FIRST
+   `new AudioContext()` in a renderer is a ~126 ms SYNCHRONOUS block —
+   it stands up the whole audio infrastructure. Every later one costs
+   ~0.3 ms, and `resume()` on a context that already exists costs
+   ~0.1 ms. Autoplay policy does not change that arithmetic: a context
+   constructed before a gesture is perfectly legal, it simply starts in
+   state 'suspended', and only the gesture may resume it. So the 126 ms
+   is paid once, wherever we choose to put it — and putting it in the
+   `pointerdown` handler meant the visitor paid it as part of clicking
+   the monitor, on top of the zoom.
+
+   So: build it on the first sign the visitor is THERE (a mouse move, a
+   wheel) rather than on the first thing they commit to, and hand the
+   build to an idle callback so it never sits inside an input handler.
+   A mouse always moves before it clicks — you cannot reach the CRT
+   without crossing the room first — so by the time the monitor is
+   clicked the block is long since paid. A visitor whose pointer never
+   moves gets it SETTLE_MS after the reveal instead, by which time the
+   opening dolly (CameraRig, lambda 1.8) has come to rest and a block
+   on a still room costs nothing anyone can see.
+
+   Four guards keep it honest:
+     - held until `afterReveal` (loadProgress): it can never compete
+       with the first load or delay the veil
+     - skipped entirely while muted — nobody's audio device gets woken
+       on behalf of a visitor who has asked for silence
+     - preferentially run in an idle slot; the short timeout is there
+       for the slow machine that never offers one, which is exactly the
+       machine where paying this on the click hurts most
+     - purely an optimisation: if nothing warms it, `unlock`/`out()`
+       still build it on demand exactly as before.
+   --------------------------------------------------------------------- */
+
+/** the opening dolly has settled by here (ms after the reveal) */
+const SETTLE_MS = 2500
+
+type IdleCb = () => void
+function idle(fn: IdleCb): void {
+  const w = window as unknown as {
+    requestIdleCallback?: (cb: IdleCb, o?: { timeout: number }) => void
+  }
+  if (w.requestIdleCallback) w.requestIdleCallback(fn, { timeout: 600 })
+  else window.setTimeout(fn, 60)
+}
+
+/** Presence, not commitment: events that mean "a person is here" and
+    that fire in a task of their own, BEFORE the click. `pointerdown`
+    and `keydown` are deliberately absent — those are the gestures
+    `unlock` already handles, and on a touch screen they arrive in the
+    same task as the tap, so there would be nothing left to win. */
+const PRESENCE = ['pointermove', 'pointerover', 'wheel'] as const
+
+let warmArmed = false
+
+function armWarm(): void {
+  if (warmArmed || typeof window === 'undefined') return
+  warmArmed = true
+  let timer = 0
+  const go = (): void => {
+    for (const e of PRESENCE) window.removeEventListener(e, go)
+    window.clearTimeout(timer)
+    if (ctx) return
+    try {
+      if (useSystem.getState().muted) return
+    } catch {
+      return
+    }
+    idle(createContext)
+  }
+  afterReveal(() => {
+    if (ctx) return
+    for (const e of PRESENCE) window.addEventListener(e, go, { passive: true })
+    timer = window.setTimeout(go, SETTLE_MS)
+  })
+}
+
 /** Bind once at module load — browsers only allow audio after a gesture. */
 function bindUnlock(): void {
   if (unlockBound || typeof window === 'undefined') return
@@ -51,6 +131,7 @@ function bindUnlock(): void {
   window.addEventListener('keydown', unlock, { passive: true })
 }
 bindUnlock()
+armWarm()
 
 /** Returns the live output bus, or null when muted / unavailable. */
 function out(): { ac: AudioContext; bus: GainNode } | null {

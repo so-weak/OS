@@ -1,7 +1,8 @@
 /* =====================================================================
-   The pocket edition — a DOM page that replaces the room on phones and
-   WebGL refusals. Composes the win95.css kit + tokens.css only. Sizes
-   sit on the grid: Plex Mono 16/32, VT323 16, Silkscreen 8.
+   The pocket edition — a DOM page that replaces the room for a WebGL
+   refusal, a crashed scene, or a small-screen visitor who asked for
+   the plain resume. Composes the win95.css kit + tokens.css only.
+   Sizes sit on the grid: Plex Mono 16/32, VT323 16, Silkscreen 8.
    ===================================================================== */
 
 .pocket {
@@ -109,7 +110,7 @@
   color: var(--ink-soft);
   overflow-wrap: anywhere;
 }
-.pocket-anyway {
+.pocket-back {
   border: none;
   background: none;
   padding: 0;
@@ -117,4 +118,24 @@
   color: var(--title-a);
   text-decoration: underline;
   cursor: pointer;
+}
+
+/* ---------- the door out of the room (App.tsx PocketDoor) ----------
+   The other half of this page: on a phone or tablet the room carries
+   one small way out to it. It borrows the room's own HUD button
+   (.hud-back, styles/hud.css) and only trims it down and moves it to
+   the free corner, so it reads as the room's chrome rather than a new
+   panel floating over the desk. The compound selector outranks
+   .hud-back on specificity, so it wins whichever order the two
+   stylesheets land in. A desk never renders the element at all. */
+.hud-back.pocket-door {
+  top: 18px;
+  right: 18px;
+  left: auto;
+  font-size: 16px;
+  padding: 4px 10px;
+  opacity: 0.68;
+}
+.hud-back.pocket-door:active {
+  opacity: 1;
 }

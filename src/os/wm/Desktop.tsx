@@ -3,7 +3,8 @@ import type {
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
 } from 'react'
-import { SCREEN_W } from '../../constants'
+import { SCREEN_W, SCREEN_H } from '../../constants'
+import { useDevice } from '../../device'
 import { useSystem, useWindows } from '../store'
 import { useEggs } from '../eggs'
 import { useWorld } from '../../world'
@@ -26,6 +27,11 @@ import { AboutDialog, ShutdownDialog, NewFolderDialog } from './dialogs'
 
 type DialogKind = 'none' | 'about' | 'shutdown' | 'folder'
 
+/* Taskbar height at phone tier — twice the 30px in metrics.ts, kept in
+   sync with the PHONE TIER block in shell.css. Only used for pointer
+   maths here; the bar's own height is CSS. */
+const PHONE_TASKBAR_H = 60
+
 const KONAMI = [
   'arrowup',
   'arrowup',
@@ -42,6 +48,7 @@ const KONAMI = [
 export default function Desktop() {
   const windows = useWindows((s) => s.windows)
   const hacker = useEggs((s) => s.hacker)
+  const phone = useDevice((s) => s.tier === 'phone')
 
   const [selected, setSelected] = useState<string | null>(null)
   const [ctx, setCtx] = useState<{ x: number; y: number } | null>(null)
@@ -73,6 +80,30 @@ export default function Desktop() {
     }, 500)
     return () => clearTimeout(t)
   }, [hireBoot])
+
+  /* ---------- phone: every window opens full-bleed ----------
+     A 620x600 window floating in a 1024x768 desktop is a joke on a
+     surface that measures 367 CSS px across: the app would get a
+     thumbnail of a thumbnail. So the moment a window appears we
+     maximize it, which is also what turns OFF titlebar dragging and
+     the eight resize handles (Window.tsx keys both on `maximized`) —
+     nobody is hauling a window around with a thumb. shell.css pins the
+     frame to the desktop as well, so there is no one-frame flash of
+     the small window before this lands, and the ids are forgotten on
+     close so a re-opened app comes back maximized too. */
+  const maximized = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!phone) return
+    const wm = useWindows.getState()
+    const live = new Set(wm.windows.map((w) => w.id))
+    for (const id of [...maximized.current])
+      if (!live.has(id)) maximized.current.delete(id)
+    for (const w of wm.windows) {
+      if (maximized.current.has(w.id)) continue
+      maximized.current.add(w.id)
+      if (!w.maximized) wm.toggleMaximize(w.id)
+    }
+  }, [windows, phone])
 
   /* ---------- konami code -> hacker mode ---------- */
   useEffect(() => {
@@ -151,9 +182,15 @@ export default function Desktop() {
     e.preventDefault()
     const p = localPoint(e.clientX, e.clientY, e.currentTarget)
     setSelected(null)
+    // the menu is twice the size on a phone, and it has to clear a
+    // taskbar that is twice as tall
     setCtx({
-      x: clamp(Math.round(p.x), 0, SCREEN_W - 178),
-      y: clamp(Math.round(p.y), 0, DESKTOP_H - 150),
+      x: clamp(Math.round(p.x), 0, SCREEN_W - (phone ? 352 : 178)),
+      y: clamp(
+        Math.round(p.y),
+        0,
+        phone ? SCREEN_H - PHONE_TASKBAR_H - 250 : DESKTOP_H - 150,
+      ),
     })
   }
 
@@ -169,6 +206,7 @@ export default function Desktop() {
         selected={selected}
         onSelect={setSelected}
         arranging={arranging}
+        phone={phone}
       />
 
       {windows.map((w) => (
@@ -229,10 +267,12 @@ function IconGrid({
   selected,
   onSelect,
   arranging,
+  phone,
 }: {
   selected: string | null
   onSelect: (id: string) => void
   arranging: boolean
+  phone: boolean
 }) {
   const open = (id: string) => {
     playClick()
@@ -248,7 +288,11 @@ function IconGrid({
             key={a.id}
             className={`dicon${selected === a.id ? ' sel' : ''}`}
             style={arranging ? { animationDelay: `${i * 45}ms` } : undefined}
-            onClick={() => onSelect(a.id)}
+            /* Double-click is the desk's gesture and it stays the desk's.
+               A finger double-taps to zoom, not to launch, so on a phone
+               one tap opens the app — the selection state a second click
+               was there to confirm is worth nothing on a touchscreen. */
+            onClick={() => (phone ? open(a.id) : onSelect(a.id))}
             onDoubleClick={() => open(a.id)}
             onKeyDown={(e: ReactKeyboardEvent<HTMLButtonElement>) => {
               if (e.key === 'Enter') {
@@ -258,7 +302,9 @@ function IconGrid({
             }}
           >
             <span className="dicon-ico">
-              <AppIcon name={a.icon} size={32} />
+              {/* 16x16 pixel art at an exact 4x instead of 2x: the grid
+                  survives, the target does not disappear under a thumb */}
+              <AppIcon name={a.icon} size={phone ? 64 : 32} />
             </span>
             <span className="dicon-label">{a.title}</span>
           </button>

@@ -678,3 +678,344 @@
 .bsod-continue {
   margin-top: 26px;
 }
+
+/* =====================================================================
+   PHONE TIER
+   ---------------------------------------------------------------------
+   Everything below hangs off ONE hook: `.os-root[data-tier='phone']`,
+   written by SoubhikOS.tsx from src/device.ts. A desk browser gets
+   data-tier="desk" and matches not a single selector here, so 1440x900
+   renders exactly what it rendered before this block existed. There are
+   deliberately NO media queries in this file: the OS is a 1024px div
+   living inside a CSS-3D transform on the CRT glass, so the browser
+   viewport is not what it is being sized against — and a max-width
+   query here would be one bad number away from firing on the desk.
+
+   THE ARITHMETIC. At 390x844 the glass measures 367 CSS px across, so
+   the 1024px logical surface composites at 0.359x and a 16px glyph
+   lands as 5.7 px of real phone screen. Mush.
+
+   So every type size doubles, and ONLY doubles: 8 -> 16, 16 -> 32,
+   24 -> 48, 32 -> 64. These are pixel faces sitting on a whole-pixel
+   grid; a 1.35x would park glyph stems between pixels and hand back
+   exactly the blur we came here to fix. 2x puts body text at ~11.5 CSS
+   px and leaves the OS at the proportions of a 512x384 screen — still
+   a beige 1990s desktop, just one built for a smaller tube.
+
+   Chrome furniture (bar heights, hit targets, gaps) is free of the
+   pixel grid, so it takes whatever a thumb needs — usually 2x, a
+   little more where a 2x target would still be too mean to hit.
+   ===================================================================== */
+
+/* ---------------------------------------------------------------------
+   Type — the doubling, in one place
+   --------------------------------------------------------------------- */
+
+/* the inherited base. Every element with no font-size of its own comes
+   along for the ride from here (boot.css pins its own root, so the BIOS
+   screens are untouched) */
+.os-root[data-tier='phone'] {
+  font-size: 32px;
+}
+
+/* ...and every rule in the kit + the shell that hard-codes 16px */
+.os-root[data-tier='phone'] .btn,
+.os-root[data-tier='phone'] .win-title,
+.os-root[data-tier='phone'] .menu-item,
+.os-root[data-tier='phone'] .field,
+.os-root[data-tier='phone'] .chip,
+.os-root[data-tier='phone'] .dicon-label,
+.os-root[data-tier='phone'] .win-loading,
+.os-root[data-tier='phone'] .start-btn,
+.os-root[data-tier='phone'] .tb-win,
+.os-root[data-tier='phone'] .tb-clock,
+.os-root[data-tier='phone'] .sm-name,
+.os-root[data-tier='phone'] .sub-arrow,
+.os-root[data-tier='phone'] .sysdlg-body,
+.os-root[data-tier='phone'] .dlg-fine,
+.os-root[data-tier='phone'] .os-toast {
+  font-size: 32px;
+}
+
+/* Silkscreen is a true bitmap face with two native sizes, 8 and 16.
+   It goes up one step, not to 32 — 16 is the next real grid it has. */
+.os-root[data-tier='phone'] .t-label,
+.os-root[data-tier='phone'] .btn-sq,
+.os-root[data-tier='phone'] .sm-ver {
+  font-size: 16px;
+}
+
+/* the 2x sizes double again, so the hierarchy survives intact */
+.os-root[data-tier='phone'] .screen-burn {
+  font-size: 64px;
+  letter-spacing: 6px;
+}
+
+/* pixel art doubles with the text it sits beside. AppIcon writes its
+   size inline, so `min-*` (which inline `width` cannot outrank) lifts
+   the small ones and leaves anything already larger alone; the svg then
+   fills whatever box it lands in, 16-unit viewBox and all. */
+.os-root[data-tier='phone'] .desktop span[aria-hidden='true'] {
+  min-width: 32px;
+  min-height: 32px;
+}
+.os-root[data-tier='phone'] .desktop span[aria-hidden='true'] > svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* ---------------------------------------------------------------------
+   Desktop — the icon grid gets room to breathe
+   --------------------------------------------------------------------- */
+.os-root[data-tier='phone'] .desktop-bg {
+  inset: 0 0 60px 0;
+}
+.os-root[data-tier='phone'] .desktop-icons {
+  top: 16px;
+  left: 16px;
+  bottom: 76px;
+  gap: 24px 32px;
+}
+.os-root[data-tier='phone'] .dicon {
+  width: 216px; /* a 2-line label at 32px mono, with air around it */
+  gap: 10px;
+  padding: 10px 4px;
+}
+.os-root[data-tier='phone'] .dicon-label {
+  padding: 2px 6px;
+}
+
+/* ---------------------------------------------------------------------
+   Windows — full-bleed, because there is nowhere else to put them
+   ---------------------------------------------------------------------
+   Desktop.tsx maximizes every window the moment it opens. Pinning the
+   frame here as well means there is never a frame of the small window
+   on the way, and it lets the taller taskbar take its 30 extra px out
+   of the window instead of covering its status bar (Window.tsx sizes a
+   maximized window from metrics.DESKTOP_H, which knows about a 30px
+   bar and must keep knowing, because the desk still has one).
+   With no floating window to go back to, the Maximize/Restore control
+   has nothing left to say, so it steps out and leaves Minimize and
+   Close — the two a thumb actually wants — twice as big. */
+.os-root[data-tier='phone'] .win {
+  left: 0 !important;
+  top: 0 !important;
+  width: 1024px !important;
+  height: 708px !important; /* SCREEN_H 768 - the 60px phone taskbar */
+  padding: 6px;
+}
+.os-root[data-tier='phone'] .win-titlebar {
+  height: 44px;
+  gap: 12px;
+  padding: 0 6px 0 12px;
+}
+.os-root[data-tier='phone'] .win-titlebar .btn-sq {
+  width: 44px;
+  height: 38px;
+}
+.os-root[data-tier='phone'] .win-titlebar .btn-sq svg {
+  width: 20px; /* 2x the 10x9 glyph grid */
+  height: 18px;
+}
+.os-root[data-tier='phone'] .win-titlebar .btn-sq + .btn-sq {
+  margin-left: 6px;
+}
+.os-root[data-tier='phone'] .win-titlebar .win-x {
+  margin-left: 12px;
+}
+.os-root[data-tier='phone'] .win-titlebar .btn-sq[aria-label='Maximize'],
+.os-root[data-tier='phone'] .win-titlebar .btn-sq[aria-label='Restore'] {
+  display: none;
+}
+
+/* a 16px scrollbar is 5.7 px of screen — ungrabbable. Double it. */
+.os-root[data-tier='phone'] ::-webkit-scrollbar {
+  width: 32px;
+  height: 32px;
+}
+.os-root[data-tier='phone'] ::-webkit-scrollbar-button:single-button {
+  height: 32px;
+  width: 32px;
+}
+
+/* ---------------------------------------------------------------------
+   Taskbar — 30px of bar is 11 px of screen; make it 60
+   --------------------------------------------------------------------- */
+.os-root[data-tier='phone'] .taskbar {
+  height: 60px;
+  gap: 8px;
+  padding: 7px 8px 7px;
+}
+.os-root[data-tier='phone'] .start-btn {
+  height: 46px;
+  gap: 10px;
+  padding: 1px 18px 1px 12px;
+}
+.os-root[data-tier='phone'] .tb-divider {
+  width: 4px;
+  margin: 2px 4px;
+}
+.os-root[data-tier='phone'] .tb-wins {
+  gap: 6px;
+}
+.os-root[data-tier='phone'] .tb-win {
+  flex: 0 1 304px;
+  min-width: 68px;
+  height: 46px;
+  gap: 10px;
+  padding: 1px 14px;
+}
+.os-root[data-tier='phone'] .tray {
+  height: 46px;
+  gap: 16px;
+  padding: 2px 16px;
+}
+.os-root[data-tier='phone'] .tray-btn svg {
+  width: 28px; /* 2x the 14x12 speaker grid */
+  height: 24px;
+}
+.os-root[data-tier='phone'] .tb-clock {
+  min-width: 80px;
+}
+/* `.tb-win span { flex: 1 }` above was written for the title and catches
+   the icon's wrapper as well, so the icon floats in half a button. On the
+   desk that is invisible (a 16px svg pinned left in the grown box) but at
+   2x it reads as a gap, so the icon here keeps its own width. */
+.os-root[data-tier='phone'] .tb-win > span[aria-hidden='true'] {
+  flex: none;
+}
+
+/* ---------------------------------------------------------------------
+   Start menu
+   --------------------------------------------------------------------- */
+.os-root[data-tier='phone'] .startmenu {
+  left: 4px;
+  bottom: 64px;
+  padding: 5px;
+}
+.os-root[data-tier='phone'] .sm-banner {
+  width: 54px;
+  gap: 12px;
+  padding: 20px 0 24px;
+}
+.os-root[data-tier='phone'] .sm-items {
+  min-width: 400px;
+  padding: 2px;
+}
+/* Start entries carry .menu-item too, and the generic .menu-item rule
+   further down weighs the same — so reach for them through .sm-items
+   and win on specificity rather than on source order. Ten entries have
+   to clear 704px of desktop, which is why these are tighter. */
+.os-root[data-tier='phone'] .sm-items .sm-item {
+  padding: 7px 30px 7px 14px;
+  gap: 16px;
+  line-height: 1.2;
+}
+.os-root[data-tier='phone'] .sm-item > span[aria-hidden='true'] {
+  min-width: 40px;
+  min-height: 40px;
+}
+.os-root[data-tier='phone'] .sm-power {
+  width: 44px;
+}
+.os-root[data-tier='phone'] .sm-power svg {
+  width: 36px;
+  height: 36px;
+}
+
+/* ---------------------------------------------------------------------
+   Context menu
+   --------------------------------------------------------------------- */
+.os-root[data-tier='phone'] .menu {
+  padding: 5px;
+  min-width: 320px;
+}
+.os-root[data-tier='phone'] .menu-item {
+  padding: 10px 24px;
+  gap: 16px;
+}
+.os-root[data-tier='phone'] .menu-sep {
+  margin: 6px 4px;
+}
+.os-root[data-tier='phone'] .ctx-menu {
+  min-width: 340px;
+}
+.os-root[data-tier='phone'] .submenu {
+  left: calc(100% - 5px);
+  top: -6px;
+  min-width: 260px;
+}
+.os-root[data-tier='phone'] .sub-arrow {
+  margin-left: 32px;
+}
+
+/* ---------------------------------------------------------------------
+   Dialogs, buttons, toast
+   --------------------------------------------------------------------- */
+.os-root[data-tier='phone'] .btn {
+  padding: 8px 26px;
+  min-width: 128px;
+}
+.os-root[data-tier='phone'] .btn:active,
+.os-root[data-tier='phone'] .btn.pressed {
+  padding: 9px 25px 7px 27px;
+}
+.os-root[data-tier='phone'] .btn:focus-visible {
+  outline-offset: -8px;
+}
+/* dialogs.tsx sets each box's width inline (370-410) — one doubled
+   width for all three, which is the only way past an inline style */
+.os-root[data-tier='phone'] .sysdlg {
+  width: 820px !important;
+  padding: 6px;
+}
+.os-root[data-tier='phone'] .sysdlg-body {
+  gap: 24px;
+  padding: 28px 28px 10px;
+}
+.os-root[data-tier='phone'] .sysdlg-body p {
+  margin: 0 0 16px;
+}
+/* the three badges a dialog can lead with, each doubled from its own
+   size: AppIcon 40, BadgeErrorX 32, GlyphPower 30 */
+.os-root[data-tier='phone'] .sysdlg-body > span[aria-hidden='true'] {
+  min-width: 80px;
+  min-height: 80px;
+}
+.os-root[data-tier='phone'] .sysdlg-body > svg {
+  width: 64px;
+  height: 64px;
+}
+.os-root[data-tier='phone'] .sysdlg-badge svg {
+  width: 60px;
+  height: 60px;
+}
+.os-root[data-tier='phone'] .sysdlg-buttons {
+  gap: 20px;
+  padding: 16px 0 22px;
+}
+.os-root[data-tier='phone'] .dlg-rule {
+  margin: 14px 0;
+}
+.os-root[data-tier='phone'] .os-toast {
+  bottom: 88px;
+  padding: 12px 28px;
+  letter-spacing: 2px;
+}
+
+/* ---------------------------------------------------------------------
+   BSOD (terminal `crash`) — the joke has to be readable to land
+   --------------------------------------------------------------------- */
+.os-root[data-tier='phone'] .bsod-inner {
+  max-width: 960px;
+  padding: 0 28px;
+  font-size: 42px;
+}
+.os-root[data-tier='phone'] .bsod-title {
+  font-size: 46px;
+  padding: 0 20px;
+  margin-bottom: 28px;
+}
+.os-root[data-tier='phone'] .bsod-detail {
+  font-size: 34px;
+}

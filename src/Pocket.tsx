@@ -6,31 +6,36 @@ import './styles/pocket.css'
 /* =====================================================================
    The pocket edition — the resume without the room.
 
-   Shown where the room cannot run: a phone-width viewport, a browser
-   that refused WebGL2, or the scene throwing (App.tsx wraps <Scene/> in
-   an ErrorBoundary that lands here). It REPLACES the room — a DOM page
-   in the OS's own beige/teal language, never a panel floating over the
-   3D. Every fact on it comes from src/data/resume.ts.
+   No longer what a phone gets for being a phone: phones walk into the
+   3D room like everything else. This page is now three things — the
+   browser that refused WebGL2, the scene throwing (App.tsx wraps
+   <Scene/> in an ErrorBoundary that lands here), and a visitor on a
+   small screen who tapped the door out because they came for the
+   resume, not the furniture. That last one is the only one offered a
+   way back in.
+
+   It REPLACES the room — a DOM page in the OS's own beige/teal
+   language, never a panel floating over the 3D. Every fact on it comes
+   from src/data/resume.ts.
    ===================================================================== */
 
-export type PocketReason = 'pocket' | 'webgl' | 'error'
+export type PocketReason = 'chose' | 'webgl' | 'error'
 
 const FIRST_NAME = identity.name.split(' ')[0]
 
 const COPY: Record<PocketReason, string> = {
-  pocket:
-    "SoubhikOS was built for a desk, not a pocket. Here's the short version:",
+  chose: "Skipping the furniture, then. Here's the short version:",
   webgl: "The room needs WebGL and yours said no. The resume doesn't care.",
   error: "The room needs WebGL and yours said no. The resume doesn't care.",
 }
 
 interface Props {
   reason: PocketReason
-  /** only offered for the width gate — a phone can still try the room */
-  onEnterAnyway?: () => void
+  /** only for 'chose' — a refused or crashed room has nowhere to go back to */
+  onEnterRoom?: () => void
 }
 
-export default function Pocket({ reason, onEnterAnyway }: Props) {
+export default function Pocket({ reason, onEnterRoom }: Props) {
   const libraryHref = href({ name: 'library', bookId: null })
 
   return (
@@ -98,13 +103,13 @@ export default function Pocket({ reason, onEnterAnyway }: Props) {
 
         <div className="pocket-foot">
           <span className="t-term pocket-fine">{identity.email}</span>
-          {onEnterAnyway ? (
+          {onEnterRoom ? (
             <button
               type="button"
-              className="pocket-anyway t-term"
-              onClick={onEnterAnyway}
+              className="pocket-back t-term"
+              onClick={onEnterRoom}
             >
-              enter the room anyway →
+              back to the room →
             </button>
           ) : null}
         </div>

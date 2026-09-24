@@ -293,3 +293,191 @@
     opacity: 0;
   }
 }
+
+/* =====================================================================
+   PHONE TIER
+   ---------------------------------------------------------------------
+   Scoped to `.os-root[data-tier='phone']` — the attribute SoubhikOS.tsx
+   writes from src/device.ts. A desk carries data-tier="desk" and matches
+   nothing below, so 1440x900 renders exactly what it rendered before.
+   No media queries: these screens are absolutely positioned inside a
+   1024px div under a CSS-3D transform, where the viewport width has
+   nothing to say about them.
+
+   Same arithmetic as the PHONE TIER blocks in wm/shell.css, apps/apps.css
+   and crt/crt.css: the glass composites the 1024px surface at ~0.359x on
+   a 390px phone, so VT323 at 20px arrives as 7.2 px of real screen. These
+   lines are written to be read — the BIOS jokes ARE the boot sequence —
+   so every size here is doubled and only doubled (20 -> 40, 25 -> 50,
+   19 -> 38, 38 -> 76 …). Fractional would park VT323's stems between
+   pixels, which is the blur the whole tier exists to remove.
+
+   Paddings, gaps and the pixel-art marks are not on the type grid, so
+   they take whatever the 1024x768 box can actually hold.
+   ===================================================================== */
+
+.os-root[data-tier='phone'] .boot-root,
+.os-root[data-tier='phone'] .shut-root {
+  font-size: 40px;
+}
+
+/* ---------- Act 1: BIOS POST ----------
+   At 2x the POST no longer fits: eleven-to-thirteen lines, several of
+   which now wrap, against 768px of tube. Clipping the bottom would eat
+   the chai joke, which is the last and best one, so the line area
+   becomes what a POST on real hardware always was — a console that
+   scrolls, newest line pinned to the bottom, the oldest sliding off the
+   top as the next arrives. Nothing is cut and nothing is unreadable;
+   the sequence just reads the way it would on a machine with fewer
+   rows, which is exactly what this is. */
+/* 133px of bottom padding clears the now two-row footer (124) AND lands
+   the line area on 416px = exactly eight 52px rows, so the console
+   clips between lines instead of halfway through one. A wrapped line is
+   104 = two rows, so every combination stays on the same grid. */
+.os-root[data-tier='phone'] .post {
+  padding: 20px 22px 133px;
+  display: flex;
+  flex-direction: column;
+}
+.os-root[data-tier='phone'] .post-head {
+  flex: none;
+  margin-bottom: 18px;
+}
+.os-root[data-tier='phone'] .post-title {
+  font-size: 50px;
+  letter-spacing: 2px;
+}
+/* PixelMark px={4} is 16x13 cells => 64x52; the viewBox carries the
+   aspect ratio, so a doubled height is all it needs */
+.os-root[data-tier='phone'] .post-head svg {
+  height: 104px;
+  width: auto;
+}
+.os-root[data-tier='phone'] .post-mem {
+  flex: none;
+  margin-bottom: 12px;
+}
+.os-root[data-tier='phone'] .post-lines {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+}
+.os-root[data-tier='phone'] .post-line {
+  flex: none;
+  min-height: 52px;
+}
+/* the caret is a flex item here, not an inline in an anonymous block, so
+   it has to make up a full 52px row itself (34 + 18) — otherwise the
+   whole column sits 18px off the grid and the console clips a line in
+   half at the top */
+.os-root[data-tier='phone'] .post-cursor {
+  flex: none;
+  width: 22px;
+  height: 34px;
+  margin-left: 4px;
+  margin-bottom: 18px;
+  vertical-align: -4px;
+}
+/* the two halves each run ~850px at 2x, so space-between across 980px
+   leaves both ragged and overlapping. Stack them instead: same height,
+   one clean left margin, the way a real POST footer scrolls. */
+.os-root[data-tier='phone'] .post-foot {
+  padding: 10px 22px 14px;
+  font-size: 38px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+
+/* ---------- Act 2: SoubhikOS splash ---------- */
+.os-root[data-tier='phone'] .splash {
+  gap: 30px;
+}
+.os-root[data-tier='phone'] .splash-ver {
+  top: 24px;
+  right: 30px;
+  font-size: 34px;
+}
+/* PixelMark px={6} => 96x78 */
+.os-root[data-tier='phone'] .splash-mark svg {
+  height: 156px;
+  width: auto;
+}
+.os-root[data-tier='phone'] .splash-word {
+  gap: 20px;
+}
+/* PixelText px={8} => 7 rows of 8px = 56 */
+.os-root[data-tier='phone'] .splash-word svg {
+  height: 112px;
+  width: auto;
+}
+/* the role line is 50 characters; at 2x it is wider than the tube, so it
+   wraps centred instead of running off both edges */
+.os-root[data-tier='phone'] .splash-sub {
+  font-size: 38px;
+  letter-spacing: 4px;
+  max-width: 940px;
+  text-align: center;
+  line-height: 1.2;
+}
+.os-root[data-tier='phone'] .splash-bar {
+  gap: 6px;
+  padding: 8px;
+  border-width: 4px;
+}
+.os-root[data-tier='phone'] .splash-seg {
+  width: 26px;
+  height: 32px;
+}
+.os-root[data-tier='phone'] .splash-status {
+  min-height: 52px;
+  font-size: 40px;
+}
+.os-root[data-tier='phone'] .splash-safemode {
+  font-size: 36px;
+}
+.os-root[data-tier='phone'] .splash-skip {
+  bottom: 24px;
+  font-size: 34px;
+}
+
+/* ---------- shutdown ---------- */
+.os-root[data-tier='phone'] .shut-closing {
+  gap: 14px;
+}
+/* PixelMark px={5} => 80x65 */
+.os-root[data-tier='phone'] .shut-mark svg {
+  height: 130px;
+  width: auto;
+}
+.os-root[data-tier='phone'] .shut-mark {
+  margin-bottom: 26px;
+}
+.os-root[data-tier='phone'] .shut-title {
+  font-size: 54px;
+  margin-bottom: 22px;
+}
+.os-root[data-tier='phone'] .shut-line {
+  min-height: 48px;
+  font-size: 38px;
+}
+/* "It is now safe to turn off" at 76px needs every px of the tube */
+.os-root[data-tier='phone'] .shut-safe {
+  padding: 0 12px;
+}
+.os-root[data-tier='phone'] .shut-safe-text {
+  font-size: 76px;
+}
+.os-root[data-tier='phone'] .shut-safe-sub {
+  margin-top: 34px;
+  font-size: 44px;
+  letter-spacing: 2px;
+}
+.os-root[data-tier='phone'] .shut-safe-bye {
+  margin-top: 56px;
+  font-size: 40px;
+  letter-spacing: 4px;
+}

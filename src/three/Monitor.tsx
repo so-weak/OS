@@ -664,10 +664,20 @@ export default function Monitor() {
       level.current * 0.3 * flicker * (0.55 + 0.45 * knob) * roomMix.current
     const glowI = level.current * 1.6 * flicker * (0.55 + 0.45 * knob)
     glowLight.current.intensity = glowI
-    // off entirely (not just intensity 0) while the tube is dark — one
-    // fewer light in every material's shading loop for the whole time
-    // before the machine is first powered on
-    glowLight.current.visible = glowI > 0.01
+    /* This light STAYS IN THE SCENE, dark or lit. Hiding it while the
+       tube is off saved one iteration of the point-light loop — and cost
+       most of a second of frozen main thread here (several on a slower
+       driver) the first time anyone clicked the monitor, which is the
+       one interaction the whole site exists for.
+       three compiles every lit material against the scene's light COUNTS
+       (numPointLights is part of the program cache key), and a light
+       whose `visible` flips is a light entering or leaving the scene, so
+       powering the tube on invalidated all ~45 programs at once and
+       relinked them synchronously in the frame that followed the click.
+       ShadowScheduler carries the same warning about its shadow lights.
+       Intensity 0 is exactly free in the picture — the shader multiplies
+       the light's colour by it and adds 0.0 — and the room pays for this
+       light anyway from the first power-on onward. */
     ledMat.current.emissiveIntensity = MathUtils.damp(
       ledMat.current.emissiveIntensity,
       powered ? 1.8 : 0,

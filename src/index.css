@@ -7,6 +7,18 @@ body,
   height: 100%;
   overflow: hidden;
   background: #060708;
+
+  /* The room's touch model is tap-to-name, tap-again-to-act, so a
+     visitor taps the same prop twice in quick succession on purpose.
+     Left alone, a mobile browser reads that as double-tap-to-zoom: it
+     swallows the second tap, the page lurches, and the prop never
+     fires. `manipulation` keeps panning and pinch-zoom and drops only
+     the double-tap gesture. A mouse has no touch-action, so this
+     cannot move a desk pixel. */
+  touch-action: manipulation;
+
+  /* likewise mobile-only: no blue flash over a tapped prop */
+  -webkit-tap-highlight-color: transparent;
 }
 
 * {

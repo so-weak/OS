@@ -11,6 +11,7 @@ import {
   RepeatWrapping,
   SRGBColorSpace,
 } from 'three'
+import { device } from '../device'
 
 /* Deterministic PRNG so StrictMode double-renders draw identical art. */
 export function mulberry(seed: number): () => number {
@@ -24,16 +25,59 @@ export function mulberry(seed: number): () => number {
   }
 }
 
+/* =====================================================================
+   THE LITE TEXTURE SCALE
+
+   The room draws and uploads ~380 canvases before the loading veil
+   lifts. `makeCanvas` takes a `scale` so a generator can STORE its art
+   at a fraction of its design size while still DRAWING in design
+   pixels: the context is pre-scaled, so not one coordinate in the
+   caller moves and nothing has to be re-measured.
+
+   `scale` defaults to exactly 1, and at 1 the function allocates the
+   same canvas it allocated before the parameter existed and applies no
+   transform at all. So the desk — and every one of the ~86 call sites
+   that does not opt in — is unchanged by construction, not by luck.
+
+   OPTING IN IS NOT FREE, and it is deliberately not the default. The
+   context transform applies to the drawing API only. It does NOT apply
+   to getImageData / putImageData (they address device texels), and it
+   cannot reach a generator that measures `ctx.canvas.width`, hands its
+   canvas to another one with drawImage, or passes its design size to a
+   helper alongside the canvas. Several generators outside this file do
+   exactly that — tex/furniture.ts's fabricSet reads back a sibling
+   canvas by design size, tex/noise.ts and tex/room.ts fill ImageData
+   buffers sized in design pixels, windowArt.ts composites canvases into
+   each other — and a silent global shrink would clip their art to a
+   corner rather than shrink it. Each call site has to be read before it
+   is scaled; the ones scaled here were. */
+export function texScale(): number {
+  return device().lite ? 0.5 : 1
+}
+
 export function makeCanvas(
   w: number,
   h: number,
   readback = false,
+  scale = 1,
 ): CanvasRenderingContext2D {
+  // Integers only: a fractional backing store is not a thing, and a
+  // half-texel offset would break every pixel-font cell in the room.
+  //
+  // At scale 1, w and h are assigned RAW. A few callers pass fractional
+  // sizes (windowArt's moon disc is 2*r), and `canvas.width` is an IDL
+  // unsigned long, so those have always been truncated, not rounded —
+  // rounding them here would change the desk by a texel.
+  const cw = scale === 1 ? w : Math.max(1, Math.round(w * scale))
+  const ch = scale === 1 ? h : Math.max(1, Math.round(h * scale))
   const c = document.createElement('canvas')
-  c.width = w
-  c.height = h
+  c.width = cw
+  c.height = ch
   const ctx = c.getContext('2d', readback ? { willReadFrequently: true } : undefined)
   if (!ctx) throw new Error('2d context unavailable')
+  // the transform comes from the ROUNDED size, not from `scale`, so the
+  // design rectangle still lands exactly on the canvas edges
+  if (cw !== w || ch !== h) ctx.scale(cw / w, ch / h)
   return ctx
 }
 
@@ -65,8 +109,26 @@ export function finish(ctx: CanvasRenderingContext2D, pixel = true): CanvasTextu
    edges, antialiased, stable, with a clean mip chain for distance.
    --------------------------------------------------------------------- */
 export const TEXT_ANISOTROPY = 16
+/** what a phone uses instead: the same 4x every non-lettering surface
+    in the room already takes. Anisotropy is paid per texture fetch, and
+    the glancing angles 16x was bought for span a few dozen device pixels
+    on a 390 px viewport, where 4x and 16x resolve the same glyph. */
+const LITE_TEXT_ANISOTROPY = 4
 /** longest side a supersampled lettering canvas may reach */
 const TEXT_MAX_SIDE = 2048
+/**
+ * Ceiling on the supersample factor on a phone.
+ *
+ * This caps how finely a glyph's EDGES are antialiased; it does not
+ * touch the design grid the glyph is laid out on, so nothing moves,
+ * nothing reflows and no lettering gets smaller. At k=2 an edge still
+ * blurs over half a design pixel — antialiased and stable, which is the
+ * whole point of drawing supersampled — while the canvas costs a
+ * quarter of what k=4 costs. The art is hugely oversampled either way:
+ * the rocket poster is 160 design px wide and covers ~40 device px of a
+ * phone screen, so even k=1 would be 4x more texels than it can show.
+ */
+const LITE_SUPER_MAX = 2
 
 /** Trilinear + full anisotropy for any canvas with lettering on it. */
 export function finishText(ctx: CanvasRenderingContext2D): CanvasTexture {
@@ -74,7 +136,7 @@ export function finishText(ctx: CanvasRenderingContext2D): CanvasTexture {
   tex.colorSpace = SRGBColorSpace
   tex.magFilter = LinearFilter
   tex.minFilter = LinearMipmapLinearFilter
-  tex.anisotropy = TEXT_ANISOTROPY
+  tex.anisotropy = device().lite ? LITE_TEXT_ANISOTROPY : TEXT_ANISOTROPY
   tex.needsUpdate = true
   return tex
 }
@@ -85,10 +147,13 @@ function superFactor(w: number, h: number, want: number): number {
   return Math.max(1, Math.min(Math.round(want), Math.floor(TEXT_MAX_SIDE / Math.max(w, h))))
 }
 
-/** A w×h design-pixel canvas stored at k× — draw in design pixels. */
+/** A w×h design-pixel canvas stored at k× — draw in design pixels.
+    On a phone k is capped at LITE_SUPER_MAX; w and h are untouched, so
+    the aspect every consumer reads off the canvas is identical. */
 function superCanvas(w: number, h: number, k: number): CanvasRenderingContext2D {
-  const ctx = makeCanvas(Math.round(w * k), Math.round(h * k))
-  ctx.scale(k, k)
+  const kk = device().lite ? Math.min(k, LITE_SUPER_MAX) : k
+  const ctx = makeCanvas(Math.round(w * kk), Math.round(h * kk))
+  ctx.scale(kk, kk)
   return ctx
 }
 
@@ -471,7 +536,9 @@ export function makeScoreboard(
 
 /** Soft radial dot — steam puffs and celebration sparks. */
 export function makeSoftCircle(): CanvasTexture {
-  const ctx = makeCanvas(64, 64)
+  // a gradient has no detail to lose; it is drawn entirely through the
+  // 2D API, so the lite scale is exact here
+  const ctx = makeCanvas(64, 64, false, texScale())
   const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 30)
   g.addColorStop(0, 'rgba(255,255,255,0.95)')
   g.addColorStop(0.55, 'rgba(255,255,255,0.35)')
@@ -496,18 +563,23 @@ export function sharedWallShadowBlob(): CanvasTexture {
     Alpha falls off smoothly over `feather` (fraction of the half-size)
     from every edge, so an additive plane reads as light, not a card. */
 export function makeFeatheredRect(w = 128, h = 96, feather = 0.3): CanvasTexture {
-  const ctx = makeCanvas(w, h)
-  const img = ctx.createImageData(w, h)
-  const fx = (w / 2) * feather
-  const fy = (h / 2) * feather
+  const ctx = makeCanvas(w, h, false, texScale())
+  // putImageData has no transform, so the falloff is laid out in TEXELS:
+  // read the canvas as it really is rather than as it was asked for.
+  // At scale 1 these are w and h and the output is byte-for-byte the
+  // same as before; the shape is a pure function of the two anyway.
+  const { width: cw, height: ch } = ctx.canvas
+  const img = ctx.createImageData(cw, ch)
+  const fx = (cw / 2) * feather
+  const fy = (ch / 2) * feather
   const ease = (t: number) => t * t * (3 - 2 * t)
-  for (let y = 0; y < h; y++) {
-    const dy = Math.min(y + 0.5, h - y - 0.5)
+  for (let y = 0; y < ch; y++) {
+    const dy = Math.min(y + 0.5, ch - y - 0.5)
     const ay = ease(Math.min(1, dy / fy))
-    for (let x = 0; x < w; x++) {
-      const dx = Math.min(x + 0.5, w - x - 0.5)
+    for (let x = 0; x < cw; x++) {
+      const dx = Math.min(x + 0.5, cw - x - 0.5)
       const ax = ease(Math.min(1, dx / fx))
-      const i = (y * w + x) * 4
+      const i = (y * cw + x) * 4
       const a = ax * ay
       img.data[i] = 255
       img.data[i + 1] = 255
@@ -727,7 +799,9 @@ export function makeLabelLines(
    Surface textures
    --------------------------------------------------------------------- */
 export function makeWood(base: string, seam: string, seed = 3): CanvasTexture {
-  const ctx = makeCanvas(256, 256)
+  // planks, grain flecks and knots, all drawn through the 2D API in
+  // design pixels — safe to store at half side on a phone
+  const ctx = makeCanvas(256, 256, false, texScale())
   ctx.fillStyle = base
   ctx.fillRect(0, 0, 256, 256)
   const rand = mulberry(seed)
@@ -765,7 +839,7 @@ export function makeWood(base: string, seam: string, seed = 3): CanvasTexture {
 }
 
 export function makeWallNoise(base: string, seed = 11): CanvasTexture {
-  const ctx = makeCanvas(128, 128)
+  const ctx = makeCanvas(128, 128, false, texScale())
   ctx.fillStyle = base
   ctx.fillRect(0, 0, 128, 128)
   const rand = mulberry(seed)
@@ -852,6 +926,9 @@ function deriveMaps(
     if (l > hi) hi = l
   }
   const span = Math.max(1, hi - lo)
+  // w and h are the SOURCE canvas's real size, so these two are already
+  // as small as the source is: no lite scale here, or they would shrink
+  // a second time and no longer match the colour map they derive from
   const bctx = makeCanvas(w, h)
   const rctx = makeCanvas(w, h)
   const bimg = bctx.createImageData(w, h)
@@ -884,7 +961,12 @@ export function makeWoodMaps(
   anisotropy = 4,
 ): SurfaceMaps {
   const S = 512
-  const ctx = makeCanvas(S, S, true)
+  // the single heaviest thing this file makes: three 512² maps, 3 MB of
+  // canvas. Every mark below is a fillRect / stroke / ellipse in design
+  // pixels, and deriveMaps re-reads the canvas by its real size (and
+  // builds its own two at that size, unscaled), so the lite scale is
+  // exact end to end. Desk 512², phone 256².
+  const ctx = makeCanvas(S, S, true, texScale())
   ctx.fillStyle = base
   ctx.fillRect(0, 0, S, S)
   const rand = mulberry(seed)
@@ -992,6 +1074,10 @@ export function makeWallMaps(
   anisotropy = 4,
 ): SurfaceMaps {
   const S = 256
+  // NOT scaled: this one addresses its own pixels by the design size S
+  // (getImageData/putImageData below, and valueNoise's lattice), so it
+  // would need rewriting against ctx.canvas before it could shrink.
+  // Nothing calls it today, so that rewrite would be untested code.
   const ctx = makeCanvas(S, S, true)
   ctx.fillStyle = base
   ctx.fillRect(0, 0, S, S)

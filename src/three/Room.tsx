@@ -3,6 +3,7 @@ import { useThree } from '@react-three/fiber'
 import { ContactShadows } from '@react-three/drei'
 import { AdditiveBlending, DoubleSide, MeshStandardMaterial, Vector2, type CanvasTexture } from 'three'
 import { awards, experience } from '../data/resume'
+import { device } from '../device'
 import { useSystem } from '../os/store'
 import { playClick } from '../os/sound'
 import BackWall from './BackWall'
@@ -65,6 +66,20 @@ import {
    ===================================================================== */
 
 const WALL_Z = -1.08
+
+/* Side of the floor's baked contact-shadow target. The bake is a full
+   depth pass of the whole room plus four blur passes over the target, so
+   the cost is quadratic in this number and so is the render target's
+   VRAM. drei's blur is expressed in UV space (blur/256 of the texture),
+   which makes the softness resolution-independent — a phone gets the
+   same shadow, drawn coarser, for a quarter of the work and ~5 MB less.
+
+   Desk: exactly 1024, as before. Phone: 512. Read once at module scope,
+   where it cannot cost a render: the tier of the machine does not change
+   under a running room (a phone stays a phone through a rotation — see
+   device.ts — and only a desktop window dragged across 700 px could flip
+   it, which at worst leaves one already-baked shadow at its old size). */
+const CONTACT_RES = device().lite ? 512 : 1024
 
 /* first load: mounted in its own turn of the staged build (stage.ts) */
 export default function Room() {
@@ -194,7 +209,7 @@ function RoomBody() {
           frames={1}
           position={[0.1, 0.008, 0.35]}
           scale={[4.6, 3.9]}
-          resolution={1024}
+          resolution={CONTACT_RES}
           blur={2.5}
           far={0.6}
           opacity={0.55}

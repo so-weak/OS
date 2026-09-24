@@ -243,3 +243,44 @@
     transition-duration: 150ms;
   }
 }
+
+/* ---------- narrow viewports and fingers ----------
+   The HUD is the one layer that is genuinely a DOM overlay on the real
+   viewport — everything inside the CRT is a fixed 1024x768 surface under
+   a CSS 3D transform, where viewport queries mean nothing. So these are
+   honest media queries, not a tier attribute.
+
+   The identity and hint lines are single unwrapped rows: at 22px VT323
+   the identity line runs ~480px, wider than a phone, and html/body are
+   overflow:hidden so there is no scrolling to the clipped ends. Wrap
+   them and step the type down to 16px, a size already on this file's
+   scale (the pixel font only stays crisp on sizes it already uses).
+
+   1100px is TABLET_MAX from src/device.ts and 'pointer: coarse' is what
+   device.ts calls a touch pointer — the desk viewport (1440px, mouse)
+   matches neither block, so nothing below here can reach it. */
+@media (max-width: 1100px) {
+  .hud-hint {
+    font-size: 16px;
+    max-width: calc(100vw - 32px);
+    white-space: normal;
+    text-align: center;
+    line-height: 1.35;
+  }
+
+  .hud-hint.hud-identity {
+    font-size: 16px;
+    letter-spacing: 1px;
+  }
+
+  .hud-back {
+    font-size: 16px;
+  }
+}
+
+/* a fingertip is ~44px; the chips are ~30px tall at desk padding */
+@media (pointer: coarse) {
+  .hud-back {
+    padding: 12px 16px;
+  }
+}

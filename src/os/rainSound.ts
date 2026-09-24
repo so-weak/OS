@@ -1,3 +1,4 @@
+import { afterReveal } from '../loadProgress'
 import { audioBus, audioUnlocked, onAudioUnlock } from './sound'
 
 /* =====================================================================
@@ -28,12 +29,20 @@ import { audioBus, audioUnlocked, onAudioUnlock } from './sound'
    drops write modulo the loop length, so a tail that runs off the end
    rings on at the start.
 
-   OFF THE HOT PATH: the build is a generator. `stepRainBuild` advances
-   it in slices (RainAudio gives it ~1.5 ms a frame, only on healthy
-   frames), never a single block over a few ms; `buildRainBuffers` runs
-   the very same generator to completion for any BaseAudioContext, which
-   is how the WAV audition renders it in an OfflineAudioContext.
+   OFF THE HOT PATH: the build is a generator, ~670 steps of about a
+   tenth of a millisecond each (50-90 ms of CPU all told). `stepRainBuild`
+   advances it in slices, never a single block over a millisecond;
+   `buildRainBuffers` runs the very same generator to completion for any
+   BaseAudioContext, which is how an offline audition renders it.
    Deterministic (seeded): the audition file is exactly what plays.
+
+   BUILT BEFORE IT IS WANTED. The loops used to be synthesised only after
+   the visitor's first gesture (an AudioContext is the only way to learn
+   the output rate, and there was none before then) at 1.5 ms a frame —
+   under a tenth of the wall clock, so the rain arrived seconds late. Now
+   they render into an OfflineAudioContext at a fixed rate (BUILD_RATE),
+   in idle time once the loading veil has lifted, and are simply waiting
+   when the gesture comes. Nothing is connected to an output until then.
 
    PLAYBACK: loop=true sources -> mix -> high-pass 120 Hz -> low-pass
    ~5 kHz (the indoor muffle) -> level gain -> the master bus in
@@ -62,6 +71,25 @@ export const STORM_CUTOFF = 6200
 /** setTargetAtTime constants: 3 x tc is ~95 % of the way */
 const FADE_IN_TC = 1.0 // in over ~3 s
 const FADE_OUT_TC = 0.67 // out over ~2 s
+
+/** The room's FIRST sound is a different moment from every later one.
+    By the time it arrives the visitor has been watching rain run down
+    the glass for several seconds with nothing to hear, so a three-second
+    swell does not read as weather gathering — it reads as the sound
+    being late. Every later change keeps FADE_IN_TC: rain returning as a
+    storm passes, walking back from the bookcase, coming off mute. Only
+    the first ramp of the page is quicker, and only once.
+
+    0.3 s (about 0.9 s to 95 %) was chosen by rendering the real playback
+    graph offline and measuring the envelope, not by arithmetic. From the
+    point the bed first clears the room's hush to within a dB of its
+    level is 0.62 s, against 2.12 s at FADE_IN_TC — brisk, but still a
+    swell: the wash underneath breathes at 0.1-0.3 Hz, so its own
+    thin-to-full takes 1.7-5 s, and a 0.6 s rise is of that family rather
+    than a new sound switching on. Faster was auditioned and rejected:
+    by 0.12 s the onset is an order of magnitude quicker than anything
+    the material does on its own, and it starts to read as a clip. */
+const FIRST_FADE_IN_TC = 0.3
 /** raining enough to start / to stop (hysteresis on live.rain) */
 const ON_RAIN = 0.03
 const OFF_RAIN = 0.008
@@ -668,19 +696,64 @@ export function buildRainBuffers(ac: BaseAudioContext, opts: BuildOptions = {}):
 
 /* ---------- the shared, time-sliced build (live app) ---------- */
 
+/** The rate the loops are synthesised at.
+
+    The build must not wait for the visitor's first gesture — that was
+    most of the old delay — and before a gesture there is no AudioContext
+    to ask for the output rate: constructing one early works, but Chrome
+    logs an autoplay warning for it and it wakes the audio device for a
+    visitor who may never make a sound. So the build renders into an
+    OfflineAudioContext at the rate every current browser opens its
+    output at, and a device that runs at 44.1 kHz gets these very same
+    buffers. That is not a compromise: an AudioBufferSourceNode resamples
+    any buffer whose rate differs from its context's, which is already
+    the normal path here — two of the three loops are detuned to 0.994
+    and 1.007, so they are resampled whatever the rate. Measured, offline:
+    these loops rendered through the playback graph into a 44.1 kHz
+    context sit within 0.15 dB of loops built natively at 44.1 kHz across
+    120 Hz - 3 kHz, and within 0.12 dB of themselves at 48 kHz in every
+    band — on a bed band-limited to 4 kHz in synthesis and 5 kHz again on
+    playback there is nothing left to hear. So nothing is ever built
+    twice, and the ambience is now sample-identical on every machine
+    instead of one render per output rate. */
+const BUILD_RATE = 48000
+
 let cache: { rate: number; buffers: AudioBuffer[] } | null = null
 let job: { rate: number; gen: Generator<void, AudioBuffer[], void> } | null = null
-/** measured: the longest single step, the whole build, slices taken */
-const telemetry = { maxStepMs: 0, totalMs: 0, steps: 0 }
+/** nothing but a factory for `createBuffer`: never rendered, never
+    connected to anything, dropped as soon as the build is done */
+let factory: BaseAudioContext | null = null
+/** measured: the longest single step, the whole build, slices taken,
+    and the moment the loops were finished (performance.now, -1 = not) */
+const telemetry = { maxStepMs: 0, totalMs: 0, steps: 0, readyAt: -1 }
+
+/** The silent context the shared build renders into. */
+function buildContext(): BaseAudioContext | null {
+  if (!factory) {
+    try {
+      factory = new OfflineAudioContext(1, 1, BUILD_RATE)
+    } catch {
+      return null
+    }
+  }
+  return factory
+}
 
 /** The finished loops for this sample rate, or null while not built. */
 export function readyBuffers(ac: BaseAudioContext): AudioBuffer[] | null {
   return cache && cache.rate === ac.sampleRate ? cache.buffers : null
 }
 
+/** The finished loops whatever rate they were rendered at (see
+    BUILD_RATE) — what the live ambience plays. */
+export function builtBuffers(): AudioBuffer[] | null {
+  return cache ? cache.buffers : null
+}
+
 /** Advance the shared build by at most about `budgetMs`. Returns the
-    loops once done (and forever after). Steps are small, so the budget
-    is overshot by less than a step. */
+    loops once done (and forever after). Steps are small — a tenth of a
+    millisecond typically, never over one — so the budget is overshot by
+    less than a step. */
 export function stepRainBuild(ac: BaseAudioContext, budgetMs: number): AudioBuffer[] | null {
   const ready = readyBuffers(ac)
   if (ready) return ready
@@ -701,10 +774,90 @@ export function stepRainBuild(ac: BaseAudioContext, budgetMs: number): AudioBuff
     if (r.done) {
       cache = { rate: job.rate, buffers: r.value }
       job = null
+      telemetry.readyAt = now
       return r.value
     }
     if (now - t0 >= budgetMs) return null
   }
+}
+
+/* ---------- getting it built before anyone asks to hear it ---------- */
+
+/** Idle slice, ms. The deadline is honoured and then some — a slot that
+    says it has 8 ms left gets 6, and 6 is the ceiling however much time
+    a slot claims. The whole build is only 50-90 ms, so a dozen or so
+    unhurried slots finish it within half a second of the reveal; there
+    is nothing to be gained by leaning harder on the frames that carry
+    the intro dolly. */
+const IDLE_MAX_MS = 6
+const IDLE_MIN_MS = 2
+/** headroom left at the end of an idle slot, ms */
+const IDLE_MARGIN_MS = 2
+
+interface Deadline {
+  timeRemaining(): number
+  didTimeout: boolean
+}
+type IdleFn = (d: Deadline) => void
+
+const idle: (fn: IdleFn) => void =
+  typeof window === 'undefined'
+    ? () => undefined
+    : 'requestIdleCallback' in window
+      ? (fn) =>
+          (
+            window as unknown as {
+              requestIdleCallback(f: IdleFn, o: { timeout: number }): void
+            }
+          ).requestIdleCallback(fn, { timeout: 400 })
+      : // no requestIdleCallback (Safari < 16.4): a small slice off the
+        // back of the frame instead, with the per-frame net underneath
+        (fn) => window.setTimeout(() => fn({ timeRemaining: () => 5, didTimeout: false }), 16)
+
+/** armed: the ambience has asked for the loops at least once */
+let armed = false
+/** the room is on screen — the build may have the idle time it wants */
+let unveiled = false
+
+function pump(d: Deadline): void {
+  if (cache) return
+  const ac = buildContext()
+  if (!ac) return
+  // a slot that fired on its timeout is not idle at all: take the floor
+  const budget = d.didTimeout
+    ? IDLE_MIN_MS
+    : clamp(d.timeRemaining() - IDLE_MARGIN_MS, IDLE_MIN_MS, IDLE_MAX_MS)
+  try {
+    if (stepRainBuild(ac, budget)) {
+      factory = null
+      return
+    }
+  } catch {
+    return
+  }
+  idle(pump)
+}
+
+/** Get the loops made. Idempotent, and silent: this synthesises samples
+    and nothing else — no node is connected to an output and nothing can
+    play until the visitor's first gesture.
+
+    Held back until the loading veil has lifted (src/loadProgress.ts) and
+    then run in genuine idle time, so it can never be the reason a frame
+    of the first load or the intro dolly is late. */
+export function primeRainBuild(): void {
+  if (armed) return
+  armed = true
+  afterReveal(() => {
+    unveiled = true
+    if (!cache) idle(pump)
+  })
+}
+
+/** Armed, revealed, and still not finished — the frame loop keeps a net
+    under the idle build for a tab that never gets an idle slot. */
+function buildPending(): boolean {
+  return unveiled && !cache
 }
 
 /* ---------- the playback graph (live and offline alike) ---------- */
@@ -860,11 +1013,15 @@ function randomOffsets(buffers: readonly AudioBuffer[]): number[] {
   return buffers.map((b) => Math.random() * b.duration)
 }
 
+/** Has the rain been heard at all yet? Module level, so it is once per
+    page load and not once per ambience: the scene is torn down and
+    rebuilt on the way to /library and back, and that return is a later
+    change like any other, not the room's first sound. */
+let heardYet = false
+
 export function createRainAmbience(): RainAmbience {
   let disposed = false
-  let acRef: BaseAudioContext | null = null
   let graph: RainGraph | null = null
-  let building = false
   let last: RainInputs = IDLE
   let acc = 0
   /** the last level handed to the gain, -1 = none yet */
@@ -886,6 +1043,11 @@ export function createRainAmbience(): RainAmbience {
     last = i
     if (disposed) return
     try {
+      // it is raining today and the visitor can hear: get the loops made
+      // now, in idle time, so that the first gesture is the only thing
+      // the rain is ever waiting for
+      if (!i.muted && i.rain > 0) primeRainBuild()
+
       const away = hidden()
       const wants = !i.muted && !away && i.rain > (graph ? OFF_RAIN : ON_RAIN)
       if (!wants) {
@@ -899,13 +1061,8 @@ export function createRainAmbience(): RainAmbience {
       if (!graph) {
         const bus = audioBus()
         if (!bus) return
-        acRef = bus.ac
-        const buffers = readyBuffers(bus.ac)
-        if (!buffers) {
-          building = true
-          return
-        }
-        building = false
+        const buffers = builtBuffers()
+        if (!buffers) return
         if (bus.ac.state !== 'running') return
         graph = createRainGraph(bus.ac, bus.bus, buffers)
         graph.start(bus.ac.currentTime, randomOffsets(buffers))
@@ -915,10 +1072,17 @@ export function createRainAmbience(): RainAmbience {
       const now = graph.ctx.currentTime
       const target = rainLevel(i)
       if (Math.abs(target - applied) > 0.0004) {
+        const up = target > applied
+        // the quick ramp is for the one that leaves silence (applied is
+        // 0 only on a graph that has just been started), never for a
+        // level nudge on rain that is already playing
+        const first = up && !heardYet && applied === 0
+        if (first) heardYet = true
+        const tc = up ? (first ? FIRST_FADE_IN_TC : FADE_IN_TC) : FADE_OUT_TC
         const p = graph.level.gain
         p.cancelScheduledValues(now)
         p.setValueAtTime(p.value, now)
-        p.setTargetAtTime(target, now, target > applied ? FADE_IN_TC : FADE_OUT_TC)
+        p.setTargetAtTime(target, now, tc)
         applied = target
       }
       const cut = i.storm ? STORM_CUTOFF : RAIN_CUTOFF
@@ -941,20 +1105,25 @@ export function createRainAmbience(): RainAmbience {
     frame(dt, i) {
       if (disposed) return
       last = i
-      // the build is a tiny slice a frame, and only while frames are
-      // healthy: it must never be the reason a frame is late
-      if (building && acRef && dt < 0.022) {
-        try {
-          if (stepRainBuild(acRef, SLICE_MS)) {
-            building = false
-            evaluate(i)
+      // the net under the idle build, for a tab that never gets an idle
+      // slot: a tiny slice a frame, and only while frames are healthy —
+      // it must never be the reason a frame is late
+      if (buildPending() && dt < 0.022) {
+        const ac = buildContext()
+        if (ac) {
+          try {
+            stepRainBuild(ac, SLICE_MS)
+          } catch {
+            /* the idle pump will not get any further either */
           }
-        } catch {
-          building = false
         }
       }
       acc += dt
-      if (acc < POLL_S) return
+      // while the rain is waiting to come in, look every frame rather
+      // than ten times a second: the loops are already made, so the
+      // first gesture is the last thing standing between it and sound
+      const eager = !graph && audioUnlocked() && !i.muted && i.rain > ON_RAIN
+      if (!eager && acc < POLL_S) return
       acc = 0
       evaluate(i)
     },
@@ -987,6 +1156,10 @@ export function rainProbe(): {
   maxStepMs: number
   buildMs: number
   steps: number
+  /** the sample rate the loops were rendered at */
+  rate: number
+  /** performance.now() when the loops were finished, -1 if they are not */
+  readyAt: number
 } {
   let newest: RainGraph | null = null
   let sources = 0
@@ -1004,5 +1177,7 @@ export function rainProbe(): {
     maxStepMs: telemetry.maxStepMs,
     buildMs: telemetry.totalMs,
     steps: telemetry.steps,
+    rate: cache ? cache.rate : BUILD_RATE,
+    readyAt: telemetry.readyAt,
   }
 }

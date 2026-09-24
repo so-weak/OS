@@ -3,14 +3,12 @@ import { useFrame } from '@react-three/fiber'
 import { MathUtils, Vector3, type PerspectiveCamera } from 'three'
 import { useSystem } from '../os/store'
 import { useLoad } from '../loadProgress'
+import { device, type DeviceState } from '../device'
 import {
   CAM_FOV_ROOM,
-  INTRO_CAM_POS,
-  LIB_CAM_POS,
-  LIB_CAM_TARGET,
-  LIB_FOV,
-  ROOM_CAM_POS,
-  ROOM_CAM_TARGET,
+  libCamPose,
+  roomCamPose,
+  roomIntroPos,
   screenCamPose,
 } from './layout'
 import { useLibrary } from './libraryState'
@@ -39,19 +37,33 @@ declare global {
  * alive; it is fully disabled while reading the screen.
  *
  * The library (src/three/Bookcase) is a third pose layered on top of
- * room view: useLibrary.open cross-fades the room pose into LIB_CAM,
- * damping the parallax away as it goes. The pin-up board is a fourth:
- * usePins.open glides to a straight-on close-up of the cork board
- * (boardCamPose, aspect-aware, on a longer lens).
+ * room view: useLibrary.open cross-fades the room pose into the shelf
+ * pose, damping the parallax away as it goes. The pin-up board is a
+ * fourth: usePins.open glides to a straight-on close-up of the cork
+ * board (boardCamPose, aspect-aware, on a longer lens).
+ *
+ * Every pose is asked for per frame rather than read off a constant,
+ * because on a phone or a tablet all of them depend on the shape of the
+ * viewport (layout.ts: roomCamPose / libCamPose, and the two that were
+ * already aspect-aware). The device tier is read non-reactively with
+ * device() so an orientation flip is picked up on the next frame and
+ * damped into, with no per-frame subscription and no re-render.
  */
 export default function CameraRig() {
   const view = useSystem((s) => s.view)
   const zoomArrived = useSystem((s) => s.zoomArrived)
 
-  const pos = useRef(INTRO_CAM_POS.clone())
-  const tgt = useRef(ROOM_CAM_TARGET.clone())
+  const pos = useRef(openingPos())
+  const tgt = useRef(openingTgt())
   const wantPos = useRef(new Vector3())
   const wantTgt = useRef(new Vector3())
+  /** this device's room pose, before parallax — what the intro lands on */
+  const roomPos = useRef(new Vector3())
+  const roomTgt = useRef(new Vector3())
+  const libPos = useRef(new Vector3())
+  const libTgt = useRef(new Vector3())
+  /** 0 = room lens, 1 = the lens screenCamPose was solved for */
+  const screenMix = useRef(0)
   /** 0 = room, 1 = parked at the bookcase */
   const libMix = useRef(0)
   /** 0 = room, 1 = parked at the pin-up board */
@@ -84,6 +96,9 @@ export default function CameraRig() {
       return
     }
     const zoomedIn = view === 'zooming-in' || view === 'screen'
+    const dev = device()
+    const roomFov = roomCamPose(dev, cam.aspect, roomPos.current, roomTgt.current)
+    const libFov = libCamPose(dev, cam.aspect, libPos.current, libTgt.current)
 
     // 'zooming-out' counts: the terminal's `library` command pulls back
     // from the screen and walks to the shelf in one move
@@ -107,14 +122,18 @@ export default function CameraRig() {
       screenCamPose(cam.aspect, wantPos.current, wantTgt.current)
     } else {
       const lib = libMix.current
-      wantPos.current.lerpVectors(ROOM_CAM_POS, LIB_CAM_POS, lib)
-      wantTgt.current.lerpVectors(ROOM_CAM_TARGET, LIB_CAM_TARGET, lib)
+      wantPos.current.lerpVectors(roomPos.current, libPos.current, lib)
+      wantTgt.current.lerpVectors(roomTgt.current, libTgt.current, lib)
       if (bm > 0.0005) {
         boardCamPose(cam.aspect, boardPos.current, boardTgt.current)
         wantPos.current.lerp(boardPos.current, bm)
         wantTgt.current.lerp(boardTgt.current, bm)
       }
-      if (view === 'room' && !still.current) {
+      // A finger is not a mouse: a tap leaves state.pointer parked
+      // wherever it landed and it never comes back, so the room would
+      // sit permanently shoved off-centre with no way to recover it.
+      // Touch gets the composed pose, dead straight.
+      if (view === 'room' && !still.current && dev.pointer !== 'touch') {
         // subtle parallax; never active while zooming or reading, and
         // eased right down at the shelf (and the board) so spines and
         // faces stay put under the pointer
@@ -131,7 +150,7 @@ export default function CameraRig() {
     const tweening = view === 'zooming-in' || view === 'zooming-out'
     if (
       intro.current &&
-      (view !== 'room' || boardOpen || pos.current.distanceToSquared(ROOM_CAM_POS) < 1e-4)
+      (view !== 'room' || boardOpen || pos.current.distanceToSquared(roomPos.current) < 1e-4)
     )
       intro.current = false
     let lambda = intro.current ? 1.8 : tweening ? 3.4 : 5.2
@@ -139,9 +158,16 @@ export default function CameraRig() {
     dampV3(pos.current, wantPos.current, lambda, dt)
     dampV3(tgt.current, wantTgt.current, lambda, dt)
 
-    // longer lens at the shelf, wide again everywhere else
+    // longer lens at the shelf, wide again everywhere else.
+    // screenCamPose solves its distance at CAM_FOV, so the screen pose
+    // has to be shot at CAM_FOV too — on a phone the room is on a wider
+    // lens than that, and the zoom eases between the two rather than
+    // popping the lens the instant the view flips. On the desk both ends
+    // of that ease are CAM_FOV_ROOM, so it is a no-op there.
+    screenMix.current = MathUtils.damp(screenMix.current, zoomedIn ? 1 : 0, 3.4, dt)
+    const baseFov = MathUtils.lerp(roomFov, CAM_FOV_ROOM, screenMix.current)
     const wantFov = MathUtils.lerp(
-      MathUtils.lerp(CAM_FOV_ROOM, LIB_FOV, libMix.current),
+      MathUtils.lerp(baseFov, libFov, libMix.current),
       BOARD_FOV,
       bm,
     )
@@ -183,6 +209,26 @@ export default function CameraRig() {
   })
 
   return null
+}
+
+/* The camera exists before the first frame does, so the opening pose is
+   sized from the device store's own viewport reading rather than from
+   cam.aspect. On the desk these are INTRO_CAM_POS and ROOM_CAM_TARGET,
+   returned unchanged. */
+function openingAspect(dev: DeviceState): number {
+  return dev.h > 0 ? dev.w / dev.h : 1.6
+}
+
+function openingPos(): Vector3 {
+  const dev = device()
+  return roomIntroPos(dev, openingAspect(dev), new Vector3())
+}
+
+function openingTgt(): Vector3 {
+  const dev = device()
+  const tgt = new Vector3()
+  roomCamPose(dev, openingAspect(dev), new Vector3(), tgt)
+  return tgt
 }
 
 function dampV3(cur: Vector3, target: Vector3, lambda: number, dt: number) {

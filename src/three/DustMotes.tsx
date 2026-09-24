@@ -5,8 +5,10 @@ import {
   Color,
   MathUtils,
   type BufferAttribute,
+  type BufferGeometry,
   type PointsMaterial,
 } from 'three'
+import { device } from '../device'
 import { useSystem } from '../os/store'
 import { live } from './live'
 
@@ -14,9 +16,18 @@ import { live } from './live'
    Faint dust motes drifting through the lamplight — pure room
    atmosphere. They fade out entirely while reading the screen so
    nothing floats between the camera and the OS.
+
+   LITE (phones) keeps a third of them. The cloud is seeded from one
+   deterministic sequence and lite simply stops drawing (and stepping)
+   after the first LITE_COUNT of it, through the geometry's draw range —
+   same buffer, same seed, same motes, fewer of them. That costs no
+   reallocation, so the tier can flip mid-flight, and it means the desk
+   path never calls setDrawRange at all: its cloud is bit-for-bit the
+   one it always drew.
    ===================================================================== */
 
 const COUNT = 110
+const LITE_COUNT = 36
 const Y_MIN = 0.1
 const Y_RANGE = 2.1
 
@@ -39,6 +50,10 @@ function mulberry(seed: number): () => number {
 export default function DustMotes() {
   const mat = useRef<PointsMaterial>(null!)
   const attr = useRef<BufferAttribute>(null!)
+  const geo = useRef<BufferGeometry>(null!)
+  /** motes currently drawn; starts at the full cloud, so on the desk the
+      branch below never fires and the draw range is never touched */
+  const drawn = useRef(COUNT)
 
   const { initial, base, speed, phase } = useMemo(() => {
     const rand = mulberry(1997)
@@ -70,8 +85,16 @@ export default function DustMotes() {
     const a = attr.current
     if (!a || mat.current.opacity < 0.01) return
 
+    // non-reactive tier read (never subscribe per frame)
+    const n = device().lite ? LITE_COUNT : COUNT
+    if (n !== drawn.current) {
+      drawn.current = n
+      // back to the full cloud: hand the range back to three entirely
+      geo.current?.setDrawRange(0, n === COUNT ? Infinity : n)
+    }
+
     const t = state.clock.elapsedTime
-    for (let i = 0; i < COUNT; i++) {
+    for (let i = 0; i < n; i++) {
       const y = base[i * 3 + 1] + t * speed[i]
       a.setXYZ(
         i,
@@ -85,7 +108,7 @@ export default function DustMotes() {
 
   return (
     <points frustumCulled={false}>
-      <bufferGeometry>
+      <bufferGeometry ref={geo}>
         <bufferAttribute
           ref={attr}
           attach="attributes-position"
